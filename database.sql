@@ -1,15 +1,15 @@
 CREATE TABLE "blems" (
-                         "id" SERIAL PRIMARY KEY,
-                         "sku" VARCHAR (20) UNIQUE NOT NULL,
-                         "brand" VARCHAR (40),
-                         "size" VARCHAR (20),
-                         "quantity" VARCHAR(3),
-                         "price" VARCHAR(10),
-                         "discontinued" BOOL default false,
-                         "new" BOOL default true,
-                         "notify" BOOL default true,
-                         "created_at" TIMESTAMP default NOW(),
-                         "updated_at" TIMESTAMP default NOW()
+    "id" SERIAL PRIMARY KEY,
+    "sku" VARCHAR (20) UNIQUE NOT NULL,
+    "brand" VARCHAR (40),
+    "size" VARCHAR (20),
+    "quantity" VARCHAR(3),
+    "price" VARCHAR(10),
+    "discontinued" BOOL default false,
+    "new" BOOL default true,
+    "notify" BOOL default true,
+    "created_at" TIMESTAMP default NOW(),
+    "updated_at" TIMESTAMP default NOW()
 );
 
 CREATE TABLE blems_history AS TABLE blems WITH NO DATA;

@@ -6,7 +6,7 @@ async function sendUpdateEmail(tires) {
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
 
     if(newTires.length === 0) {
-        console.log('No new tires');
+        console.log('Not sending email, no new tires.');
         return {tires};
     }
 
@@ -56,7 +56,7 @@ async function sendUpdateEmail(tires) {
                 reject(error);
             } else {
                 console.log('Email sent: ' + info.response);
-                resolve({info, tires});
+                resolve(tires);
             }
         });
     });

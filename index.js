@@ -1,8 +1,12 @@
+// database connection
 const {getSqlClient, startConnection, endConnection} = require('./server/modules/sqlClient.js');
+// repository
 const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/repository/blemRepository.js');
+// services
 const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
-const {getTimeUntilNextRun,updateTires} = require('./server/utils/utilShiznit.js');
 const {sendUpdateEmail} = require('./server/service/emailService.js');
+// utils
+const {getRandomInt,updateTires} = require('./server/utils/utilShiznit.js');
 
 let runs = 0;
 const run = () => fetchTiresFromInterco().then(async r => {
@@ -11,7 +15,7 @@ const run = () => fetchTiresFromInterco().then(async r => {
     const databaseTires = await fetchTiresFromDatabase(sqlClient);
     const updatedTires = updateTires(r, databaseTires);
     const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
-    const {tires} = await sendUpdateEmail(savedTires);
+    const tires = await sendUpdateEmail(savedTires);
     await saveTiresToDatabase(tires, sqlClient);
     await endConnection(sqlClient);
 
@@ -23,15 +27,6 @@ const run = () => fetchTiresFromInterco().then(async r => {
 
 run();
 
-
-function getRandomInt(min, max) {
-    const minCeiled = Math.ceil(min);
-    const maxFloored = Math.floor(max);
-    const milliseconds = Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
-    console.log(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
-
-    return milliseconds;
-}
 
 
 

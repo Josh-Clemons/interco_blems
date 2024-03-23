@@ -74,7 +74,17 @@ function getTimeUntilNextRun() {
 }
 
 
+function getRandomInt(min, max) {
+    const minCeiled = Math.ceil(min);
+    const maxFloored = Math.floor(max);
+    const milliseconds = Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
+    console.log(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
+
+    return milliseconds;
+}
+
 module.exports = {
     updateTires,
-    getTimeUntilNextRun
+    getTimeUntilNextRun,
+    getRandomInt
 }
