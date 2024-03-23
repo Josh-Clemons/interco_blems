@@ -9,7 +9,7 @@ const sqlClient = new Client({
 });
 async function startConnection()
 {
-    sqlClient.connect()
+    return sqlClient.connect()
         .then(() => {
             console.log('Connected to PostgreSQL database');
         })
@@ -19,7 +19,7 @@ async function startConnection()
 }
 async function endConnection ()
 {
-    sqlClient.end()
+    return sqlClient.end()
         .then(() => {
             console.log('Connection to PostgreSQL closed');
         })

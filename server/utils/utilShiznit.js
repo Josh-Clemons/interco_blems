@@ -38,7 +38,42 @@ function updateTires(searchTires, databaseTires)
     return updatedTires
 }
 
+function getTimeUntilNextRun() {
+    let now = new Date();
+    let nextRunTime;
+
+    // Check if it's a weekday
+    if (now.getDay() >= 1 && now.getDay() <= 5) {
+        // Check if it's between 6am and 6pm
+        if (now.getHours() >= 6 && now.getHours() < 18) {
+            // Calculate time until next half hour mark
+            nextRunTime = new Date(now);
+            nextRunTime.setMinutes(Math.ceil(now.getMinutes() / 30) * 30, 0, 0);
+        } else if (now.getHours() < 6) {
+            // Calculate time until 6am of the same day
+            nextRunTime = new Date(now);
+            nextRunTime.setHours(6, 0, 0, 0);
+        } else {
+            // Calculate time until 6am of the next day
+            nextRunTime = new Date(now);
+            nextRunTime.setDate(now.getDate() + 1);
+            nextRunTime.setHours(6, 0, 0, 0);
+        }
+    } else {
+        // Calculate time until next Monday at 6am
+        nextRunTime = new Date(now);
+        nextRunTime.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7));
+        nextRunTime.setHours(6, 0, 0, 0);
+    }
+
+    console.log('Next run time: ', nextRunTime);
+
+    // return the difference in milliseconds
+    return nextRunTime - now;
+}
+
 
 module.exports = {
-    updateTires
+    updateTires,
+    getTimeUntilNextRun
 }
