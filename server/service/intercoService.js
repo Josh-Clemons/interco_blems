@@ -5,7 +5,7 @@ async function fetchTiresFromInterco() {
 
     let driver = await new Builder()
         .forBrowser("chrome")
-        // .setChromeOptions(new chrome.Options().addArguments("--headless"))
+        .setChromeOptions(new chrome.Options().addArguments("--headless"))
         .build();
 
 
@@ -53,7 +53,10 @@ async function fetchTiresFromInterco() {
                 brand: brand,
                 size: size,
                 quantity: quantity,
-                price: price
+                price: price,
+                notify: true,
+                new: true,
+                discontinued: false
             }
             console.log(tire);
             tires = [...tires, tire];

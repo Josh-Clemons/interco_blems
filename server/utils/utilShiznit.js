@@ -4,18 +4,21 @@ function updateTires(searchTires, databaseTires)
 
     // checks if tires from search results are not in the database, adds them to the list
     for(let tire of searchTires){
+        tire.id = null;
         let match = databaseTires.find((dbTire) => {
             return dbTire.sku === tire.sku;
         });
 
 
         if(match){
-            // notify if tire quantity or price has changed
-            if(match.quantity !== tire.quantity || match.price !== tire.price){
-                tire.notify = true;
+            tire.id = match.id;
+            tire.discontinued = false;
+            match.discontinued ? tire.new = true : tire.new = false;
+            // notify only if tire quantity or price has changed
+            if(match.quantity === tire.quantity && match.price === tire.price && !match.notify){
+                tire.notify = false;
             }
         }
-        tire.discontinued = false;
         updatedTires.push(tire);
     }
 
@@ -26,6 +29,7 @@ function updateTires(searchTires, databaseTires)
         });
         if(!match){
             tire.new = false;
+            tire.notify = false;
             tire.discontinued = true;
             updatedTires.push(tire);
         }

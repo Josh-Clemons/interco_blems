@@ -7,9 +7,9 @@ const {sendUpdateEmail} = require('./server/service/emailService.js');
 fetchTiresFromInterco().then(async r => {
     await startConnection();
     const databaseTires = await fetchTiresFromDatabase();
-    const updatedTires = updateTires(r, databaseTires);
-    await saveTiresToDatabase(updatedTires);
-    await sendUpdateEmail();
+    let updatedTires = updateTires(r, databaseTires);
+    const {tires} = await sendUpdateEmail(updatedTires);
+    await saveTiresToDatabase(tires);
     await endConnection();
 
 });

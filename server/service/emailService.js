@@ -1,13 +1,21 @@
 const {transporter} = require('../modules/emailClient');
-const {fetchTiresFromDatabase, saveTiresToDatabase} = require('../repository/blemRepository');
 
 const NOTIFY_LIST = ['mrjoshc@gmail.com']
-async function sendUpdateEmail() {
-    let tires = await fetchTiresFromDatabase();
+async function sendUpdateEmail(tires) {
     let newTires = tires.filter(tire => tire.new === true && tire.discontinued === false);
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
 
+    if(newTires.length === 0) {
+        return {tires};
+    }
+
+    for(let tire of tires) {
+        tire.notify = false;
+        tire.new = false;
+    }
+
     let htmlBody = '<h2>New Tires</h2>';
+
     newTires.forEach(tire => {
         htmlBody += `
             <p>
@@ -19,7 +27,7 @@ async function sendUpdateEmail() {
         `;
     });
 
-    changedTires.size > 0 ? htmlBody += '<h2>Changed Tires</h2>' : "";
+    changedTires.length > 0 ? htmlBody += '<br><h2>Changed Tires</h2>' : "";
     changedTires.forEach(tire => {
         htmlBody += `
             <p>
@@ -37,26 +45,18 @@ async function sendUpdateEmail() {
     mailOptions.subject = 'Interco Blem Update';
     mailOptions.html = htmlBody;
 
-    // Create a new promise that resolves when the email has been sent
-    let sendEmailPromise = new Promise((resolve, reject) => {
+
+    return new Promise((resolve, reject) => {
         transporter.sendMail(mailOptions, function(error, info){
             if (error) {
                 console.log(error);
                 reject(error);
             } else {
                 console.log('Email sent: ' + info.response);
-                resolve(info);
+                resolve({info, tires});
             }
         });
     });
-
-    for(let tire of tires) {
-        tire.notify = false;
-        tire.new = false;
-    }
-
-    // Wait for both the email to be sent and the tires to be saved to the database
-    return Promise.all([sendEmailPromise, saveTiresToDatabase(tires)]);
 }
 
 module.exports = {
