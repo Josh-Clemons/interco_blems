@@ -1,7 +1,7 @@
 function updateTires(searchTires, databaseTires)
 {
     let updatedTires = [];
-    console.log('Checking for new and updated tires.');
+    console.log('Comparing data sets, checking for new and updated tires.');
 
     // checks if tires from search results are not in the database, adds them to the list
     for(let tire of searchTires){

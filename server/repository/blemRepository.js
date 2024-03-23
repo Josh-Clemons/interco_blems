@@ -13,6 +13,7 @@ async function fetchTiresFromDatabase (sqlClient)
 async function saveTiresToDatabase (tires, sqlClient)
 {
     console.log('Saving tires to database');
+    let saveMessage = 'Saved, sku: ';
     let savedTires = [];
     for(let tire of tires){
         let query, values;
@@ -42,12 +43,13 @@ async function saveTiresToDatabase (tires, sqlClient)
                 tire.quantity, tire.price, tire.discontinued, tire.notify, tire.new];
         }
         await sqlClient.query(query, values).then((result) => {
-            console.log(`Saved, sku: ${result.rows[0].sku}`);
             savedTires = [...savedTires, result.rows[0]];
+            saveMessage += `${result.rows[0].sku}, `;
         }).catch((error) => {
             console.log('Error saving tire to database, id: ', tire.id, '\n', error);
         });
     }
+    console.log(saveMessage);
     return savedTires;
 }
 

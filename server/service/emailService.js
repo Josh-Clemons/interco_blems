@@ -56,7 +56,7 @@ async function sendUpdateEmail(tires) {
                 console.log(error);
                 reject(error);
             } else {
-                console.log('Email sent: ' + info.response);
+                console.log(`Email sent to: ${NOTIFY_LIST}`);
                 resolve({notifyTires});
             }
         });
