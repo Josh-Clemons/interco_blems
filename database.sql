@@ -16,7 +16,7 @@ CREATE TABLE blems_history AS TABLE blems WITH NO DATA;
 
 CREATE OR REPLACE FUNCTION save_history() RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO blemsHistory SELECT NEW.*;
+    INSERT INTO blems_history SELECT NEW.*;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

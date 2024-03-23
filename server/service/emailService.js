@@ -6,6 +6,7 @@ async function sendUpdateEmail(tires) {
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
 
     if(newTires.length === 0) {
+        console.log('No new tires');
         return {tires};
     }
 
@@ -15,7 +16,7 @@ async function sendUpdateEmail(tires) {
     }
 
     let htmlBody = '<h2>New Tires</h2>' +
-        '<p>{{new Date().toLocaleString()}}</p>';
+        `<p>${new Date().toLocaleString()}</p>`;
 
     newTires.forEach(tire => {
         htmlBody += `

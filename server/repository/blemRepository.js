@@ -13,6 +13,7 @@ async function fetchTiresFromDatabase (sqlClient)
 async function saveTiresToDatabase (tires, sqlClient)
 {
     console.log('Saving tires to database');
+    let savedTires = [];
     for(let tire of tires){
         let query, values;
         if(tire.id) {
@@ -22,7 +23,8 @@ async function saveTiresToDatabase (tires, sqlClient)
                 ON CONFLICT (id) DO UPDATE
                     SET sku = excluded.sku, brand = excluded.brand, size = excluded.size, quantity = excluded.quantity,
                         price = excluded.price, discontinued = excluded.discontinued,
-                        notify = excluded.notify, new = excluded.new, updated_at = now();
+                        notify = excluded.notify, new = excluded.new, updated_at = now()
+                RETURNING *;
             `;
             values = [tire.id, tire.sku, tire.brand, tire.size,
                 tire.quantity, tire.price, tire.discontinued, tire.notify, tire.new];
@@ -33,17 +35,20 @@ async function saveTiresToDatabase (tires, sqlClient)
                 ON CONFLICT (sku) DO UPDATE
                     SET brand = excluded.brand, size = excluded.size, quantity = excluded.quantity,
                         price = excluded.price, discontinued = excluded.discontinued,
-                        notify = excluded.notify, new = excluded.new, updated_at = now();
+                        notify = excluded.notify, new = excluded.new, updated_at = now()
+                RETURNING *;
             `;
             values = [tire.sku, tire.brand, tire.size,
                 tire.quantity, tire.price, tire.discontinued, tire.notify, tire.new];
         }
         await sqlClient.query(query, values).then((result) => {
-            console.log('Tire saved to database, id: ', tire.id);
+            console.log(`Saved tire to database, id: ${result.rows[0].id}`);
+            savedTires = [...savedTires, result.rows[0]];
         }).catch((error) => {
             console.log('Error saving tire to database, id: ', tire.id, '\n', error);
         });
     }
+    return savedTires;
 }
 
 module.exports = {

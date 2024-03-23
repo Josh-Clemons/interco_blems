@@ -9,15 +9,16 @@ const run = () => fetchTiresFromInterco().then(async r => {
     const sqlClient = getSqlClient()
     await startConnection(sqlClient);
     const databaseTires = await fetchTiresFromDatabase(sqlClient);
-    let updatedTires = updateTires(r, databaseTires);
-    const {tires} = await sendUpdateEmail(updatedTires);
+    const updatedTires = updateTires(r, databaseTires);
+    const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
+    const {tires} = await sendUpdateEmail(savedTires);
     await saveTiresToDatabase(tires, sqlClient);
     await endConnection(sqlClient);
 
     console.log(`Run finished at: ${new Date().toLocaleString()} - Run number: ${++runs}`);
     setTimeout(() => {
         run();
-    }, getRandomInt(1000 * 60 * 3, 1000 * 60 * 10));
+    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60));
 });
 
 run();
@@ -27,7 +28,7 @@ function getRandomInt(min, max) {
     const minCeiled = Math.ceil(min);
     const maxFloored = Math.floor(max);
     const milliseconds = Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
-    console.log(`Next run scheduled in ${milliseconds/1000/60} minutes`);
+    console.log(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
 
     return milliseconds;
 }

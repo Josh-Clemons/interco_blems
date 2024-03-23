@@ -22,11 +22,13 @@ async function fetchTiresFromInterco() {
             "46X", "/46",
             "47X", "/47",
             "48X", "/48",
+            "49x", "/49",
             "51X", "/51",
             "52X", "/52",
             "53X", "/53",
             "54X", "/54"]
 
+        console.log('Fetching tires from Interco');
         await driver.get('https://www.intercotire.com/blem_list_0');
 
         const tables = await driver.findElements(By.tagName("table"));
@@ -37,8 +39,8 @@ async function fetchTiresFromInterco() {
             rows.push(...newRows);
         }
 
-        console.log('\n******* Lets find them big bitches ********');
-        console.log('Found', rows.length, 'rows');
+        console.log('Found ', rows.length, 'tires');
+
         for(let i = 0; i < rows.length; i++){
             const tdsInRow = await rows[i].findElements(By.tagName("td"));
 
@@ -58,7 +60,6 @@ async function fetchTiresFromInterco() {
                 new: true,
                 discontinued: false
             }
-            console.log(tire);
             tires = [...tires, tire];
         }
     } finally {
