@@ -28,7 +28,7 @@ function updateTires(searchTires, databaseTires)
         let match = updatedTires.find((searchTire) => {
             return searchTire.sku === tire.sku;
         });
-        if(!match){
+        if(!match && !tire.discontinued) {
             tire.new = false;
             tire.notify = false;
             tire.discontinued = true;
