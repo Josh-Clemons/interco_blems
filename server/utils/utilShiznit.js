@@ -1,7 +1,9 @@
+const {logger} = require('../clients/logClient.js');
+
 function updateTires(searchTires, databaseTires)
 {
     let updatedTires = [];
-    console.log('Comparing data sets, checking for new and updated tires.');
+    logger.info('Comparing data sets, checking for new and updated tires.');
 
     // checks if tires from search results are not in the database, adds them to the list
     for(let tire of searchTires){
@@ -67,7 +69,7 @@ function getTimeUntilNextRun() {
         nextRunTime.setHours(6, 0, 0, 0);
     }
 
-    console.log('Next run time: ', nextRunTime);
+    logger.info('Next run time: ', nextRunTime);
 
     // return the difference in milliseconds
     return nextRunTime - now;
@@ -78,7 +80,7 @@ function getRandomInt(min, max) {
     const minCeiled = Math.ceil(min);
     const maxFloored = Math.floor(max);
     const milliseconds = Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
-    console.log(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
+    logger.info(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
 
     return milliseconds;
 }

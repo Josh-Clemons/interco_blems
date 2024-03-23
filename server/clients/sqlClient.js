@@ -1,5 +1,5 @@
 const { Client } = require('pg');
-
+const {logger } = require('.//logClient.js');
 function getSqlClient() {
     return new Client({
         host: 'localhost',
@@ -14,20 +14,20 @@ async function startConnection(sqlClient)
 {
     return sqlClient.connect()
         .then(() => {
-            console.log('Connected to PostgreSQL database');
+            logger.info('Connected to PostgreSQL database');
         })
         .catch((err) => {
-            console.error('Error connecting to PostgreSQL database', err);
+            logger.error('Error connecting to PostgreSQL database', err);
         });
 }
 async function endConnection (sqlClient)
 {
     return sqlClient.end()
         .then(() => {
-            console.log('Connection to PostgreSQL closed');
+            logger.info('Connection to PostgreSQL closed');
         })
         .catch((err) => {
-            console.error('Error closing connection', err);
+            logger.error('Error closing connection', err);
         });
 }
 

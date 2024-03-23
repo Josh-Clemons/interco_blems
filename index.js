@@ -1,5 +1,7 @@
 // database connection
-const {getSqlClient, startConnection, endConnection} = require('./server/modules/sqlClient.js');
+const {getSqlClient, startConnection, endConnection} = require('./server/clients/sqlClient.js');
+// logger
+const {logger} = require('./server/clients/logClient.js');
 // repository
 const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/repository/blemRepository.js');
 // services
@@ -20,7 +22,7 @@ const run = () => fetchTiresFromInterco().then(async r => {
     compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
     await endConnection(sqlClient);
 
-    console.log(`Run finished at: ${new Date().toLocaleString()} - Run number: ${++runs}`);
+    logger.info(`Run finished, number: ${++runs}`);
     setTimeout(() => {
         run();
     }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes

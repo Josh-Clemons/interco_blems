@@ -1,5 +1,6 @@
 const {Builder, By} = require("selenium-webdriver");
 const chrome = require("selenium-webdriver/chrome");
+const {logger} = require('../clients/logClient');
 
 async function fetchTiresFromInterco() {
 
@@ -28,7 +29,7 @@ async function fetchTiresFromInterco() {
             "53X", "/53",
             "54X", "/54"]
 
-        console.log('Fetching tires from Interco');
+        logger.info('Fetching tires from Interco');
         await driver.get('https://www.intercotire.com/blem_list_0');
 
         const tables = await driver.findElements(By.tagName("table"));
@@ -39,7 +40,7 @@ async function fetchTiresFromInterco() {
             rows.push(...newRows);
         }
 
-        console.log('Found ', rows.length, 'tires');
+        logger.info('Found ', rows.length, 'tires');
 
         for(let i = 0; i < rows.length; i++){
             const tdsInRow = await rows[i].findElements(By.tagName("td"));

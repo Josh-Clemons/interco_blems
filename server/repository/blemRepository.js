@@ -1,18 +1,20 @@
+const {logger} = require('../clients/logClient.js');
+
 async function fetchTiresFromDatabase (sqlClient)
 {
-    console.log('Fetching tires from database');
+    logger.info('Fetching tires from database');
 
     const query = `SELECT * FROM "blems";`;
     return sqlClient.query(query).then((result) => {
         return result.rows;
     }).catch((error) => {
-        console.log('Error fetching tires from database', error);
+        logger.error('Error fetching tires from database', error);
     });
 }
 
 async function saveTiresToDatabase (tires, sqlClient)
 {
-    console.log('Saving tires to database');
+    logger.info('Saving tires to database');
     let saveMessage = 'Saved, sku: ';
     let savedTires = [];
     for(let tire of tires){
@@ -46,10 +48,10 @@ async function saveTiresToDatabase (tires, sqlClient)
             savedTires = [...savedTires, result.rows[0]];
             saveMessage += `${result.rows[0].sku}, `;
         }).catch((error) => {
-            console.log('Error saving tire to database, id: ', tire.id, '\n', error);
+            logger.error('Error saving tire to database, id: ', tire.id, '\n', error);
         });
     }
-    console.log(saveMessage);
+    logger.info(saveMessage);
     return savedTires;
 }
 

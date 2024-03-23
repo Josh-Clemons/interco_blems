@@ -1,4 +1,5 @@
-const {transporter} = require('../modules/emailClient');
+const {transporter} = require('../clients/emailClient');
+const {logger} = require('../clients/logClient');
 
 const NOTIFY_LIST = ['mrjoshc@gmail.com']
 async function sendUpdateEmail(tires) {
@@ -7,7 +8,7 @@ async function sendUpdateEmail(tires) {
     let notifyTires = JSON.parse(JSON.stringify(tires)); // create a deep copy of the tires array so original is not modified
 
     if(newTires.length === 0) {
-        console.log('Not sending email, no new tires.');
+        logger.warn('Not sending email, no new tires.');
         return {notifyTires};
     }
 
@@ -49,14 +50,14 @@ async function sendUpdateEmail(tires) {
     mailOptions.html = htmlBody;
 
 
-    console.log('Sending email');
+    logger.info('Sending email');
     return new Promise((resolve, reject) => {
         transporter.sendMail(mailOptions, function(error, info){
             if (error) {
-                console.log(error);
+                logger.error(error);
                 reject(error);
             } else {
-                console.log(`Email sent to: ${NOTIFY_LIST}`);
+                logger.warn(`Email sent to: ${NOTIFY_LIST}`);
                 resolve({notifyTires});
             }
         });
