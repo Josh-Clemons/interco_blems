@@ -1,23 +1,26 @@
-const {startConnection, endConnection} = require('./server/modules/sqlClient.js');
+const {getSqlClient, startConnection, endConnection} = require('./server/modules/sqlClient.js');
 const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/repository/blemRepository.js');
 const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
 const {getTimeUntilNextRun,updateTires} = require('./server/utils/utilShiznit.js');
 const {sendUpdateEmail} = require('./server/service/emailService.js');
 
 let runs = 0;
-fetchTiresFromInterco().then(async r => {
-    await startConnection();
-    const databaseTires = await fetchTiresFromDatabase();
+const run = () => fetchTiresFromInterco().then(async r => {
+    const sqlClient = getSqlClient()
+    await startConnection(sqlClient);
+    const databaseTires = await fetchTiresFromDatabase(sqlClient);
     let updatedTires = updateTires(r, databaseTires);
     const {tires} = await sendUpdateEmail(updatedTires);
-    await saveTiresToDatabase(tires);
-    await endConnection();
+    await saveTiresToDatabase(tires, sqlClient);
+    await endConnection(sqlClient);
 
-    console.log(`${new Date().toLocaleString()} - Run number: ${++runs}`);
+    console.log(`Run finished at: ${new Date().toLocaleString()} - Run number: ${++runs}`);
     setTimeout(() => {
-        fetchTiresFromInterco()
-    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60));
+        run();
+    }, getRandomInt(1000 * 60 * 3, 1000 * 60 * 10));
 });
+
+run();
 
 
 function getRandomInt(min, max) {

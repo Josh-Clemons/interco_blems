@@ -14,7 +14,8 @@ async function sendUpdateEmail(tires) {
         tire.new = false;
     }
 
-    let htmlBody = '<h2>New Tires</h2>';
+    let htmlBody = '<h2>New Tires</h2>' +
+        '<p>{{new Date().toLocaleString()}}</p>';
 
     newTires.forEach(tire => {
         htmlBody += `
@@ -46,6 +47,7 @@ async function sendUpdateEmail(tires) {
     mailOptions.html = htmlBody;
 
 
+    console.log('Sending email');
     return new Promise((resolve, reject) => {
         transporter.sendMail(mailOptions, function(error, info){
             if (error) {

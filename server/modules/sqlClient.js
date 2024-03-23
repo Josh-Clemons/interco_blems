@@ -1,13 +1,16 @@
 const { Client } = require('pg');
 
-const sqlClient = new Client({
-    host: 'localhost',
-    port: 5432,
-    database: 'blems',
-    user: 'postgres',
-    password: 'password'
-});
-async function startConnection()
+function getSqlClient() {
+    return new Client({
+        host: 'localhost',
+        port: 5432,
+        database: 'blems',
+        user: 'postgres',
+        password: 'password'
+    });
+}
+
+async function startConnection(sqlClient)
 {
     return sqlClient.connect()
         .then(() => {
@@ -17,7 +20,7 @@ async function startConnection()
             console.error('Error connecting to PostgreSQL database', err);
         });
 }
-async function endConnection ()
+async function endConnection (sqlClient)
 {
     return sqlClient.end()
         .then(() => {
@@ -31,5 +34,5 @@ async function endConnection ()
 module.exports = {
     startConnection,
     endConnection,
-    sqlClient
+    getSqlClient
 };

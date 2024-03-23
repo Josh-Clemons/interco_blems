@@ -8,11 +8,11 @@ CREATE TABLE "blems" (
                          "discontinued" BOOL default false,
                          "new" BOOL default true,
                          "notify" BOOL default true,
-                         "created_at" DATE default NOW(),
-                         "updated_at" DATE default NOW()
+                         "created_at" TIMESTAMP default NOW(),
+                         "updated_at" TIMESTAMP default NOW()
 );
 
-CREATE TABLE blemsHistory AS TABLE blems WITH NO DATA;
+CREATE TABLE blems_history AS TABLE blems WITH NO DATA;
 
 CREATE OR REPLACE FUNCTION save_history() RETURNS TRIGGER AS $$
 BEGIN

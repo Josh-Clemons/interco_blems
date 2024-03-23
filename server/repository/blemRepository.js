@@ -1,5 +1,4 @@
-const {sqlClient} = require("../modules/sqlClient");
-async function fetchTiresFromDatabase ()
+async function fetchTiresFromDatabase (sqlClient)
 {
     console.log('Fetching tires from database');
 
@@ -11,7 +10,7 @@ async function fetchTiresFromDatabase ()
     });
 }
 
-async function saveTiresToDatabase (tires)
+async function saveTiresToDatabase (tires, sqlClient)
 {
     console.log('Saving tires to database');
     for(let tire of tires){
