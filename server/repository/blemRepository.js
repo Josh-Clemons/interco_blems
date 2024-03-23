@@ -42,7 +42,7 @@ async function saveTiresToDatabase (tires, sqlClient)
                 tire.quantity, tire.price, tire.discontinued, tire.notify, tire.new];
         }
         await sqlClient.query(query, values).then((result) => {
-            console.log(`Saved tire to database, id: ${result.rows[0].id}`);
+            console.log(`Saved, sku: ${result.rows[0].sku}`);
             savedTires = [...savedTires, result.rows[0]];
         }).catch((error) => {
             console.log('Error saving tire to database, id: ', tire.id, '\n', error);

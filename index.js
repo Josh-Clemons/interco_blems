@@ -6,7 +6,7 @@ const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/reposito
 const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
 const {sendUpdateEmail} = require('./server/service/emailService.js');
 // utils
-const {getRandomInt,updateTires} = require('./server/utils/utilShiznit.js');
+const {compareResults, getRandomInt, updateTires} = require('./server/utils/utilShiznit.js');
 
 let runs = 0;
 const run = () => fetchTiresFromInterco().then(async r => {
@@ -15,15 +15,17 @@ const run = () => fetchTiresFromInterco().then(async r => {
     const databaseTires = await fetchTiresFromDatabase(sqlClient);
     const updatedTires = updateTires(r, databaseTires);
     const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
-    const tires = await sendUpdateEmail(savedTires);
-    await saveTiresToDatabase(tires, sqlClient);
+    const {notifyTires} = await sendUpdateEmail(savedTires);
+    // only save tires to database if they changed after sending an email
+    compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
     await endConnection(sqlClient);
 
     console.log(`Run finished at: ${new Date().toLocaleString()} - Run number: ${++runs}`);
     setTimeout(() => {
         run();
-    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60));
+    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes
 });
+
 
 run();
 

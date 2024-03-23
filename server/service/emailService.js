@@ -4,13 +4,14 @@ const NOTIFY_LIST = ['mrjoshc@gmail.com']
 async function sendUpdateEmail(tires) {
     let newTires = tires.filter(tire => tire.new === true && tire.discontinued === false);
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
+    let notifyTires = JSON.parse(JSON.stringify(tires)); // create a deep copy of the tires array so original is not modified
 
     if(newTires.length === 0) {
         console.log('Not sending email, no new tires.');
-        return {tires};
+        return {notifyTires};
     }
 
-    for(let tire of tires) {
+    for(let tire of notifyTires) {
         tire.notify = false;
         tire.new = false;
     }
@@ -56,7 +57,7 @@ async function sendUpdateEmail(tires) {
                 reject(error);
             } else {
                 console.log('Email sent: ' + info.response);
-                resolve(tires);
+                resolve({notifyTires});
             }
         });
     });

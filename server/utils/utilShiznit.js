@@ -83,8 +83,15 @@ function getRandomInt(min, max) {
     return milliseconds;
 }
 
+const compareResults = (first, second) => {
+    first.sort((a, b) => (a.id > b.id) ? 1 : -1);
+    second.sort((a, b) => (a.id > b.id) ? 1 : -1);
+    return JSON.stringify(first) === JSON.stringify(second);
+}
+
 module.exports = {
     updateTires,
     getTimeUntilNextRun,
-    getRandomInt
+    getRandomInt,
+    compareResults
 }
