@@ -26,6 +26,11 @@ const run = () => fetchTiresFromInterco().then(async r => {
     setTimeout(() => {
         run();
     }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes
+}).catch(e => {
+    logger.error("Error in run", e);
+    setTimeout(() => {
+        run();
+    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes
 });
 
 

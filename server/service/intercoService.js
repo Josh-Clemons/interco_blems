@@ -40,7 +40,7 @@ async function fetchTiresFromInterco() {
             rows.push(...newRows);
         }
 
-        logger.info('Found ', rows.length, 'tires');
+        logger.info('Found', rows.length, 'tires');
 
         for(let i = 0; i < rows.length; i++){
             const tdsInRow = await rows[i].findElements(By.tagName("td"));

@@ -16,8 +16,10 @@ function updateTires(searchTires, databaseTires)
         if(match){
             tire.id = match.id;
             tire.discontinued = false;
+            // if the database version is discontinued, but it is now in the search results, mark it as new
             match.discontinued ? tire.new = true : tire.new = false;
-            // notify only if tire quantity or price has changed
+            // notify only if tire quantity or price has changed, if notify is currently true it should
+            // stay that way as the emailService will reset it after sending an email
             if(match.quantity === tire.quantity && match.price === tire.price && !match.notify){
                 tire.notify = false;
             }

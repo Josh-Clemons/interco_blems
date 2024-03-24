@@ -8,9 +8,10 @@ async function sendUpdateEmail(tires) {
     let notifyTires = JSON.parse(JSON.stringify(tires)); // create a deep copy of the tires array so original is not modified
 
     if(newTires.length === 0) {
-        logger.warn('Not sending email, no new tires.');
+        logger.info('Not sending email, no new tires.');
         return {notifyTires};
     }
+    logger.warn('New tires found:', newTires.length);
 
     for(let tire of notifyTires) {
         tire.notify = false;
