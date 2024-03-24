@@ -11,6 +11,8 @@ const {sendUpdateEmail} = require('./server/service/emailService.js');
 const {compareResults, getRandomInt, updateTires} = require('./server/utils/utilShiznit.js');
 
 let runs = 0;
+let successfulRuns = 0;
+let errorRuns = 0;
 const run = () => fetchTiresFromInterco().then(async r => {
     const sqlClient = getSqlClient()
     await startConnection(sqlClient);
@@ -22,17 +24,18 @@ const run = () => fetchTiresFromInterco().then(async r => {
     compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
     await endConnection(sqlClient);
 
-    logger.info(`Run finished, number: ${++runs}`);
-    setTimeout(() => {
-        run();
-    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes
+    logger.info(`${++successfulRuns} successful runs (${++runs} total) in this cycle.`);
 }).catch(e => {
-    logger.error("Error in run", e);
-    setTimeout(() => {
-        run();
-    }, getRandomInt(1000 * 60 * 30, 1000 * 60 * 60)); // 30-60 minutes
+    logger.error(`${++errorRuns} failed runs (${++runs} total) in this cycle.\n`, e);
+}).finally(() => {
+    scheduleNextRun();
 });
 
+function scheduleNextRun() {
+    setTimeout(() => {
+        run();
+    }, getRandomInt(1000 * 60 * 45, 1000 * 60 * 60)); // 45-60 minutes
+}
 
 run();
 

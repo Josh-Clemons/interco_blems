@@ -9,6 +9,7 @@ async function fetchTiresFromInterco() {
         .setChromeOptions(new chrome.Options().addArguments("--headless"))
         .build();
 
+    await driver.manage().setTimeouts({ pageLoad: 240000 });
 
     let tires = [];
     try {
