@@ -58,6 +58,11 @@ function getTimeUntilNextRun() {
             // Calculate time until 6am of the same day
             nextRunTime = new Date(now);
             nextRunTime.setHours(6, 0, 0, 0);
+        } else if (now.getDay() === 5) {
+            // For Friday after hours calculate time until 6am of the next Monday
+            nextRunTime = new Date(now);
+            nextRunTime.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7));
+            nextRunTime.setHours(6, 0, 0, 0);
         } else {
             // Calculate time until 6am of the next day
             nextRunTime = new Date(now);
