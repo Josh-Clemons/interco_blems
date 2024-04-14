@@ -1,7 +1,7 @@
 const {transporter} = require('../clients/emailClient');
 const {logger} = require('../clients/logClient');
 
-const NOTIFY_LIST = ['mrjoshc@gmail.com']
+const NOTIFY_LIST = ['mrjoshc@gmail.com', 'mrclemons88@gmail.com']
 async function sendUpdateEmail(tires) {
     let newTires = tires.filter(tire => tire.new === true && tire.discontinued === false);
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
@@ -25,6 +25,7 @@ async function sendUpdateEmail(tires) {
         htmlBody += `
             <p>
                 SKU: ${tire.sku}<br>
+                SIZE: ${tire.size}<br>
                 Brand: ${tire.brand}<br>
                 Price: ${tire.price}<br>
                 Quantity: ${tire.quantity}<br>
@@ -37,6 +38,7 @@ async function sendUpdateEmail(tires) {
         htmlBody += `
             <p>
                 SKU: ${tire.sku}<br>
+                SIZE: ${tire.size}<br>
                 Brand: ${tire.brand}<br>
                 Price: ${tire.price}<br>
                 Quantity: ${tire.quantity}<br>
