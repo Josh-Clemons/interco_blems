@@ -8,7 +8,7 @@ const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/reposito
 const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
 const {sendUpdateEmail} = require('./server/service/emailService.js');
 // utils
-const {compareResults, getRandomInt, updateTires, getTimeUntilNextRun} = require('./server/utils/utilShiznit.js');
+const {compareResults, updateTires, getTimeUntilNextRun} = require('./server/utils/utilShiznit.js');
 
 let runs = 0;
 let successfulRuns = 0;
@@ -34,9 +34,8 @@ const run = () => fetchTiresFromInterco().then(async r => {
 function scheduleNextRun() {
     setTimeout(() => {
         run();
-    }, getTimeUntilNextRun()); // 45-60 minutes
+    }, getTimeUntilNextRun());
 }
-
 run();
 
 

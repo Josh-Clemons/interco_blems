@@ -1,7 +1,6 @@
 const {
     updateTires,
     getTimeUntilNextRun,
-    getRandomInt,
     compareResults
 } = require('../../../server/utils/utilShiznit');
 
@@ -97,6 +96,16 @@ describe('getTimeUntilNextRun', () => {
         const result = getTimeUntilNextRun();
         // 1 day and 19.5 hours in milliseconds
         const expected = (24 + 19.5) * 60 * 60 * 1000;
+
+        expect(result).toBe(expected);
+    });
+
+    test('should not return same time as the previous run', () => {
+        // Mock the current date and time to be a weekday at 6:30am
+        jest.setSystemTime(new Date('2024-04-12T11:30:00Z').getTime());
+        const result = getTimeUntilNextRun();
+        // 30 minutes in milliseconds
+        const expected = 30 * 60 * 1000;
 
         expect(result).toBe(expected);
     });

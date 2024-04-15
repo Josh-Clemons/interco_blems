@@ -45,51 +45,47 @@ function updateTires(searchTires, databaseTires)
 
 function getTimeUntilNextRun() {
     let now = new Date();
+    let nowPlusOneMinute = new Date(now);
     let nextRunTime;
 
+    // Use 1 minute past now for calculations to avoid re-running immediately
+    let delayUntilNextMinute = 60 - nowPlusOneMinute.getSeconds();
+    nowPlusOneMinute.setSeconds(nowPlusOneMinute.getSeconds() + delayUntilNextMinute);
+
     // Check if it's a weekday
-    if (now.getDay() >= 1 && now.getDay() <= 5) {
+    if (nowPlusOneMinute.getDay() >= 1 && nowPlusOneMinute.getDay() <= 5) {
         // Check if it's between 6am and 6pm
-        if (now.getHours() >= 6 && now.getHours() < 18) {
+        if (nowPlusOneMinute.getHours() >= 6 && nowPlusOneMinute.getHours() < 18) {
             // Calculate time until next half hour mark
-            nextRunTime = new Date(now);
-            nextRunTime.setMinutes(Math.ceil(now.getMinutes() / 30) * 30, 0, 0);
-        } else if (now.getHours() < 6) {
+            nextRunTime = new Date(nowPlusOneMinute);
+            nextRunTime.setMinutes(Math.ceil(nowPlusOneMinute.getMinutes() / 30) * 30, 0, 0);
+        } else if (nowPlusOneMinute.getHours() < 6) {
             // Calculate time until 6am of the same day
-            nextRunTime = new Date(now);
+            nextRunTime = new Date(nowPlusOneMinute);
             nextRunTime.setHours(6, 0, 0, 0);
-        } else if (now.getDay() === 5) {
+        } else if (nowPlusOneMinute.getDay() === 5) {
             // For Friday after hours calculate time until 6am of the next Monday
-            nextRunTime = new Date(now);
-            nextRunTime.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7));
+            nextRunTime = new Date(nowPlusOneMinute);
+            nextRunTime.setDate(nowPlusOneMinute.getDate() + ((1 + 7 - nowPlusOneMinute.getDay()) % 7));
             nextRunTime.setHours(6, 0, 0, 0);
         } else {
             // Calculate time until 6am of the next day
-            nextRunTime = new Date(now);
-            nextRunTime.setDate(now.getDate() + 1);
+            nextRunTime = new Date(nowPlusOneMinute);
+            nextRunTime.setDate(nowPlusOneMinute.getDate() + 1);
             nextRunTime.setHours(6, 0, 0, 0);
         }
     } else {
         // Calculate time until next Monday at 6am
-        nextRunTime = new Date(now);
-        nextRunTime.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7));
+        nextRunTime = new Date(nowPlusOneMinute);
+        nextRunTime.setDate(nowPlusOneMinute.getDate() + ((1 + 7 - nowPlusOneMinute.getDay()) % 7));
         nextRunTime.setHours(6, 0, 0, 0);
     }
 
-    logger.info('Next run time: ', nextRunTime);
+    logger.info('Next run time: ',
+        nextRunTime.toLocaleString('en-US', {timeZone: 'America/Chicago'}));
 
     // return the difference in milliseconds
     return nextRunTime - now;
-}
-
-
-function getRandomInt(min, max) {
-    const minCeiled = Math.ceil(min);
-    const maxFloored = Math.floor(max);
-    const milliseconds = Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
-    logger.info(`Next run scheduled in ${Math.round(milliseconds/1000/60)} minutes`);
-
-    return milliseconds;
 }
 
 const compareResults = (first, second) => {
@@ -101,6 +97,5 @@ const compareResults = (first, second) => {
 module.exports = {
     updateTires,
     getTimeUntilNextRun,
-    getRandomInt,
     compareResults
 }
