@@ -36,6 +36,7 @@ function updateTires(searchTires, databaseTires)
             tire.new = false;
             tire.notify = false;
             tire.discontinued = true;
+            tire.quantity = 0;
             updatedTires.push(tire);
         }
     }
