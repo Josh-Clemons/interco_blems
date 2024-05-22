@@ -30,7 +30,7 @@ describe('updateTires', () => {
         const searchTires = [];
         const databaseTires = [{ sku: 'SKU1', quantity: 1, price: 1 }];
         const updatedTires = updateTires(searchTires, databaseTires);
-        expect(updatedTires).toEqual([{ sku: 'SKU1', quantity: 1, price: 1, new: false, notify: false, discontinued: true }]);
+        expect(updatedTires).toEqual([{ sku: 'SKU1', quantity: 0, price: 1, new: false, notify: false, discontinued: true }]);
     });
 });
 
