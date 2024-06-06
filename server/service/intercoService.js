@@ -15,6 +15,9 @@ async function fetchTiresFromInterco() {
     try {
 
         const sizesToCheck = [
+            "37X", "/37",
+            "38X", "/38",
+            "39X", "/39",
             "40X", "/40",
             "41X", "/41",
             "42X", "/42",
