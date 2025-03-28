@@ -13,11 +13,11 @@ const {compareResults, updateTires, getTimeUntilNextRun} = require('./server/uti
 let runs = 0;
 let successfulRuns = 0;
 let errorRuns = 0;
-const run = () => fetchTiresFromInterco().then(async r => {
+const run = () => fetchTiresFromInterco().then(async results => {
     const sqlClient = getSqlClient()
     await startConnection(sqlClient);
     const databaseTires = await fetchTiresFromDatabase(sqlClient);
-    const updatedTires = updateTires(r, databaseTires);
+    const updatedTires = updateTires(results, databaseTires);
     const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
     const {notifyTires} = await sendUpdateEmail(savedTires);
     // only save tires to database if they changed after sending an email
