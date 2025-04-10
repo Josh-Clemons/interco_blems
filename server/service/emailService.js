@@ -1,8 +1,8 @@
-const {transporter} = require('../clients/emailClient');
 const {logger} = require('../clients/logClient');
+const {getEmailSqlClient, startConnection, endConnection} = require('../clients/sqlClient');
 
-const NOTIFY_LIST = ['mrjoshc@gmail.com', 'mrclemons88@gmail.com']
-async function sendUpdateEmail(tires) {
+const NOTIFY_LIST = ['mrjoshc@gmail.com']
+async function saveUpdateEmail(tires) {
     let newTires = tires.filter(tire => tire.new === true && tire.discontinued === false);
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
     let notifyTires = JSON.parse(JSON.stringify(tires)); // create a deep copy of the tires array so original is not modified
@@ -46,27 +46,25 @@ async function sendUpdateEmail(tires) {
         `;
     });
 
-    let mailOptions = {};
-    mailOptions.from = process.env.EMAIL_ADDRESS;
-    mailOptions.to = NOTIFY_LIST;
-    mailOptions.subject = 'Interco Blem Update';
-    mailOptions.html = htmlBody;
-
-
-    logger.info('Sending email');
-    return new Promise((resolve, reject) => {
-        transporter.sendMail(mailOptions, function(error, info){
-            if (error) {
-                logger.error(error);
-                reject(error);
-            } else {
-                logger.warn(`Email sent to: ${NOTIFY_LIST}`);
-                resolve({notifyTires});
-            }
-        });
+    // TODO (Josh) move this to a repository
+    const sqlClient = getEmailSqlClient();
+    await startConnection(sqlClient);
+    let query = `
+        INSERT INTO "email" ("email_to", "subject", "body")
+        VALUES ($1, $2, $3)
+        RETURNING id;
+    `;
+    let values = [NOTIFY_LIST.join(','), 'Interco Blem Alert!', htmlBody];
+    await sqlClient.query(query, values).then((result) => {
+        logger.info('Email saved, id: ', result.rows[0].id);
+        endConnection(sqlClient);
+        return notifyTires;
+    }).catch((error) => {
+        logger.error('Error saving email', error);
+        endConnection(sqlClient);
     });
 }
 
 module.exports = {
-    sendUpdateEmail
+    saveUpdateEmail
 }

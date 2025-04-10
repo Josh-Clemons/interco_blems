@@ -1,10 +1,20 @@
 const { Client } = require('pg');
 const {logger } = require('.//logClient.js');
-function getSqlClient() {
+function getBlemSqlClient() {
     return new Client({
         host: 'localhost',
         port: 5432,
         database: 'blems',
+        user: 'postgres',
+        password: 'password'
+    });
+}
+
+function getEmailSqlClient() {
+    return new Client({
+        host: 'localhost',
+        port: 5432,
+        database: 'email_service',
         user: 'postgres',
         password: 'password'
     });
@@ -34,5 +44,6 @@ async function endConnection (sqlClient)
 module.exports = {
     startConnection,
     endConnection,
-    getSqlClient
+    getBlemSqlClient,
+    getEmailSqlClient
 };
