@@ -1,7 +1,8 @@
 const {logger} = require('../clients/logClient');
 const {getEmailSqlClient, startConnection, endConnection} = require('../clients/sqlClient');
+const {saveEmail} = require("../repository/emailRepository");
 
-const NOTIFY_LIST = ['mrjoshc@gmail.com']
+const NOTIFY_LIST = ['mrjoshc@gmail.com', 'mrclemons88@gmail.com']
 async function saveUpdateEmail(tires) {
     let newTires = tires.filter(tire => tire.new === true && tire.discontinued === false);
     let changedTires = tires.filter(tire => tire.new === false && tire.notify === true && tire.discontinued === false);
@@ -46,23 +47,13 @@ async function saveUpdateEmail(tires) {
         `;
     });
 
-    // TODO (Josh) move this to a repository
-    const sqlClient = getEmailSqlClient();
-    await startConnection(sqlClient);
-    let query = `
-        INSERT INTO "email" ("email_to", "subject", "body")
-        VALUES ($1, $2, $3)
-        RETURNING id;
-    `;
-    let values = [NOTIFY_LIST.join(','), 'Interco Blem Alert!', htmlBody];
-    await sqlClient.query(query, values).then((result) => {
-        logger.info('Email saved, id: ', result.rows[0].id);
-        endConnection(sqlClient);
-        return notifyTires;
-    }).catch((error) => {
-        logger.error('Error saving email', error);
-        endConnection(sqlClient);
-    });
+    const emailData = {
+        to: NOTIFY_LIST,
+        subject: 'Interco Blem ALERT!',
+        body: htmlBody
+    }
+    await saveEmail(emailData);
+    return {notifyTires};
 }
 
 module.exports = {
