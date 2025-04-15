@@ -3,11 +3,8 @@ const {logger} = require('./server/clients/logClient.js');
 const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/repository/blemRepository.js');
 const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
 const {saveUpdateEmail} = require('./server/service/emailService.js');
-const {compareResults, updateTires, getTimeUntilNextRun} = require('./server/utils/utilShiznit.js');
+const {compareResults, updateTires} = require('./server/utils/utilShiznit.js');
 
-let runs = 0;
-let successfulRuns = 0;
-let errorRuns = 0;
 const run = () => fetchTiresFromInterco().then(async results => {
     const sqlClient = getBlemSqlClient()
     await startConnection(sqlClient);
@@ -18,18 +15,11 @@ const run = () => fetchTiresFromInterco().then(async results => {
     compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
     await endConnection(sqlClient);
 
-    logger.info(`${++successfulRuns} successful runs (${++runs} total) in this cycle.`);
+    logger.info(`Run completed successfully`);
 }).catch(e => {
-    logger.error(`${++errorRuns} failed runs (${++runs} total) in this cycle.\n`, e);
-}).finally(() => {
-    scheduleNextRun();
+    logger.error(`Error in run\n`, e);
 });
 
-function scheduleNextRun() {
-    setTimeout(() => {
-        run();
-    }, getTimeUntilNextRun());
-}
 run();
 
 
