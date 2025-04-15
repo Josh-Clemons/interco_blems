@@ -1,5 +1,4 @@
 const {logger} = require('../clients/logClient');
-const {getEmailSqlClient, startConnection, endConnection} = require('../clients/sqlClient');
 const {saveEmail} = require("../repository/emailRepository");
 
 const NOTIFY_LIST = ['mrjoshc@gmail.com', 'mrclemons88@gmail.com']
@@ -9,7 +8,7 @@ async function saveUpdateEmail(tires) {
     let notifyTires = JSON.parse(JSON.stringify(tires)); // create a deep copy of the tires array so original is not modified
 
     if(newTires.length === 0) {
-        logger.info('Not sending email, no new tires.');
+        logger.info('Not saving email, no new tires.');
         return {notifyTires};
     }
     logger.warn('New tires found:', newTires.length);
@@ -49,7 +48,7 @@ async function saveUpdateEmail(tires) {
 
     const emailData = {
         to: NOTIFY_LIST,
-        subject: 'Interco Blem ALERT!',
+        subject: 'ALERT! Interco Blems Found',
         body: htmlBody
     }
     await saveEmail(emailData);

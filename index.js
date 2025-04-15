@@ -15,7 +15,6 @@ const run = () => fetchTiresFromInterco().then(async results => {
     const updatedTires = updateTires(results, databaseTires);
     const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
     const {notifyTires} = await saveUpdateEmail(savedTires);
-    // only save tires to database if they changed after sending an email
     compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
     await endConnection(sqlClient);
 
