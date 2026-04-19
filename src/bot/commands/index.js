@@ -15,9 +15,12 @@ const { REST, Routes } = require('discord.js');
 const ping = require('./ping');
 const blems = require('./blems');
 const sources = require('./sources');
+const subscribe = require('./subscribe');
+const subscriptions = require('./subscriptions');
+const unsubscribe = require('./unsubscribe');
 
 // Registry — add new commands to this array as they're built in later phases.
-const COMMAND_MODULES = [ping, blems, sources];
+const COMMAND_MODULES = [ping, blems, sources, subscribe, subscriptions, unsubscribe];
 
 const commands = new Map();
 for (const mod of COMMAND_MODULES) {

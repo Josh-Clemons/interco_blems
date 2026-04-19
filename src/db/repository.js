@@ -151,6 +151,86 @@ function logEmail(emailData) {
     `).run(emailData);
 }
 
+// ---------------------------------------------------------------------------
+// Users + subscriptions (Phase 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inserts a user row if missing, otherwise refreshes the cached username.
+ */
+function upsertUser(id, username) {
+    return getDb().prepare(`
+        INSERT INTO users (id, username) VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET username = excluded.username
+    `).run(id, username || null);
+}
+
+/**
+ * Creates a new subscription. Caller is responsible for having upserted the
+ * user first. Returns the inserted row (including its new id).
+ */
+function createSubscription(sub) {
+    const info = getDb().prepare(`
+        INSERT INTO subscriptions
+            (user_id, source, sku, brand, size, size_min, price_max,
+             notify_dm, notify_channel, notify_changed, notify_removed)
+        VALUES
+            (@user_id, @source, @sku, @brand, @size, @size_min, @price_max,
+             @notify_dm, @notify_channel, @notify_changed, @notify_removed)
+    `).run({
+        user_id: sub.user_id,
+        source: sub.source ?? null,
+        sku: sub.sku ?? null,
+        brand: sub.brand ?? null,
+        size: sub.size ?? null,
+        size_min: sub.size_min ?? null,
+        price_max: sub.price_max ?? null,
+        notify_dm: sub.notify_dm ? 1 : 0,
+        notify_channel: sub.notify_channel ?? null,
+        notify_changed: sub.notify_changed ? 1 : 0,
+        notify_removed: sub.notify_removed ? 1 : 0,
+    });
+    return getSubscriptionById(info.lastInsertRowid);
+}
+
+function getSubscriptionById(id) {
+    return getDb().prepare('SELECT * FROM subscriptions WHERE id = ?').get(id);
+}
+
+/**
+ * Returns active subscriptions for a specific user, newest first.
+ */
+function listSubscriptionsForUser(userId) {
+    return getDb().prepare(`
+        SELECT * FROM subscriptions
+        WHERE user_id = ? AND active = 1
+        ORDER BY id DESC
+    `).all(userId);
+}
+
+/**
+ * Returns every active subscription across all users. Used by the dispatcher
+ * after each scrape.
+ */
+function getActiveSubscriptions() {
+    return getDb().prepare(`
+        SELECT * FROM subscriptions WHERE active = 1
+    `).all();
+}
+
+/**
+ * Soft-deletes a subscription (sets active=0). Returns true if a row was
+ * updated AND it belonged to the given user — prevents one user from
+ * unsubscribing another.
+ */
+function deactivateSubscription(id, userId) {
+    const info = getDb().prepare(`
+        UPDATE subscriptions SET active = 0
+        WHERE id = ? AND user_id = ? AND active = 1
+    `).run(id, userId);
+    return info.changes > 0;
+}
+
 module.exports = {
     getTiresBySource,
     getActiveTires,
@@ -161,4 +241,10 @@ module.exports = {
     deactivateTires,
     markNotified,
     logEmail,
+    upsertUser,
+    createSubscription,
+    getSubscriptionById,
+    listSubscriptionsForUser,
+    getActiveSubscriptions,
+    deactivateSubscription,
 };

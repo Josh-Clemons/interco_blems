@@ -5,6 +5,8 @@ const { diff, hasAlerts }  = require('./src/tracker');
 const { filterForPublicAlert, hasPublicAlerts } = require('./src/alertFilter');
 const { sendAlert }        = require('./src/notifier/email');
 const { sendDiscordAlert } = require('./src/notifier/discord');
+const { dispatchSubscriptionAlerts } = require('./src/subscriptions');
+const subDispatch = require('./src/notifier/subscriptionDispatch');
 const { startScheduler }   = require('./src/scheduler');
 const repo = require('./src/db/repository');
 
@@ -62,38 +64,61 @@ async function runAll() {
             continue;
         }
 
-        // Apply public-feed filter (e.g. min 35" diameter)
-        const publicDiff = filterForPublicAlert(result);
-        if (!hasPublicAlerts(publicDiff)) {
+        // Enrich alert-eligible tires with the source name. Scrapers don't set
+        // it on their own output, but downstream filters/matchers need it.
+        const enrich = (t) => ({ ...t, source: scraper.name });
+        const enrichedDiff = {
+            added:       result.added.map(enrich),
+            reactivated: result.reactivated.map(enrich),
+            changed:     result.changed.map(enrich),
+            removed:     result.removed.map(enrich),
+            unchanged:   result.unchanged,
+        };
+
+        // --- Public feed (email + alert channel) ---
+        const publicDiff = filterForPublicAlert(enrichedDiff);
+        if (hasPublicAlerts(publicDiff)) {
+            try {
+                const emailData = await sendAlert(publicDiff, scraper.name);
+                if (emailData) {
+                    repo.logEmail(emailData);
+
+                    const fresh = repo.getTiresBySource(scraper.name);
+                    const alertedSkus = new Set([
+                        ...publicDiff.added.map(t => t.sku),
+                        ...publicDiff.reactivated.map(t => t.sku),
+                    ]);
+                    const notifyIds = fresh
+                        .filter(r => alertedSkus.has(r.sku))
+                        .map(r => r.id);
+                    repo.markNotified(notifyIds);
+                }
+            } catch (err) {
+                console.error('[run] Email send failed:', err.message);
+            }
+
+            try {
+                await sendDiscordAlert(publicDiff);
+            } catch (err) {
+                console.error('[run] Discord alert failed:', err.message);
+            }
+        } else {
             console.log(`[run] No tires pass PUBLIC_ALERT_MIN_DIAMETER — skipping public feed`);
-            continue;
         }
 
-        // Email
+        // --- Per-user subscription fan-out (always on the full diff) ---
         try {
-            const emailData = await sendAlert(publicDiff, scraper.name);
-            if (emailData) {
-                repo.logEmail(emailData);
-
-                const fresh = repo.getTiresBySource(scraper.name);
-                const alertedSkus = new Set([
-                    ...publicDiff.added.map(t => t.sku),
-                    ...publicDiff.reactivated.map(t => t.sku),
-                ]);
-                const notifyIds = fresh
-                    .filter(r => alertedSkus.has(r.sku))
-                    .map(r => r.id);
-                repo.markNotified(notifyIds);
+            const stats = await dispatchSubscriptionAlerts(enrichedDiff, {
+                getActiveSubscriptions: repo.getActiveSubscriptions,
+                sendDm:                 subDispatch.sendDm,
+                sendChannel:            subDispatch.sendChannel,
+                buildEmbedsForUser:     subDispatch.buildEmbedsForUser,
+            });
+            if (stats.usersNotified || stats.dmFailures) {
+                console.log(`[run] Subscriptions: ${stats.usersNotified} notified, ${stats.dmFailures} failures`);
             }
         } catch (err) {
-            console.error('[run] Email send failed:', err.message);
-        }
-
-        // Discord public feed (always fires regardless of subscriptions)
-        try {
-            await sendDiscordAlert(publicDiff);
-        } catch (err) {
-            console.error('[run] Discord alert failed:', err.message);
+            console.error('[run] Subscription dispatch failed:', err.message);
         }
     }
 }

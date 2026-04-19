@@ -95,7 +95,7 @@ confirmed online before any scraping begins.
 
 ```js
 // index.js (new structure)
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`Logged in as ${client.user.tag}`);
     runAll();              // first scrape immediately
     startScheduler(runAll); // then on schedule
@@ -224,8 +224,36 @@ server members. The bot should catch the DM failure gracefully and tell them in-
 
 ---
 
-## Phase 4 — Watchlist
-*Pin specific tires. Get an elevated alert the moment they appear, reappear, or change.*
+## Phase 4 — Pinned SKU Watches (merged into /subscribe) ✅
+
+Rather than introduce a separate `/watch` command and `watchlist` table, Phase 4
+extended the existing subscription model. A "watch" is just a subscription with
+`sku` set and `track_changes` / `track_removed` enabled — same table, same
+dispatcher, same command.
+
+### Schema additions (columns on `subscriptions`)
+- `sku`            — exact SKU pin (case-insensitive); null = any
+- `size`           — exact size string match; null = any
+- `notify_changed` — also alert on qty/price changes
+- `notify_removed` — also alert when a matching tire disappears
+
+Migrations run idempotently in `src/db/client.js` via PRAGMA-guarded ALTER TABLE.
+
+### /subscribe extensions
+New options: `sku`, `size`, `track_changes`, `track_removed`. Guard: if
+`track_changes` or `track_removed` is set, at least one narrowing filter
+(`sku`, `brand`, `size`, or `size_min`) is required to prevent firehose spam.
+
+### Dispatcher changes
+`buildUserHits` now walks `added` + `reactivated` for all subs, plus `changed`
+for notify_changed subs, plus `removed` for notify_removed subs. Per-user dedup
+keeps a single message even when broad + pinned subs both match the same tire;
+the pinned flag wins for styling.
+
+### Embed distinction
+`src/notifier/subscriptionDispatch.js` groups hits by event (🟢 new, 🔄
+reactivated, 🔁 changed, 🗑️ removed) and uses orange+🔔 for any entry with a
+pinned SKU, blurple+🔔 otherwise.
 
 ### Commands
 
