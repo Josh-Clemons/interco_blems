@@ -1,11 +1,15 @@
 require('dotenv').config();
 
-const scrapers    = require('./src/scrapers');
-const { diff, hasAlerts } = require('./src/tracker');
-const { sendAlert }           = require('./src/notifier/email');
-const { sendDiscordAlert }    = require('./src/notifier/discord');
-const { startScheduler }  = require('./src/scheduler');
+const scrapers             = require('./src/scrapers');
+const { diff, hasAlerts }  = require('./src/tracker');
+const { sendAlert }        = require('./src/notifier/email');
+const { sendDiscordAlert } = require('./src/notifier/discord');
+const { startScheduler }   = require('./src/scheduler');
 const repo = require('./src/db/repository');
+
+const { getClient, login } = require('./src/bot/client');
+const { registerCommands } = require('./src/bot/commands');
+const { attachInteractionHandler } = require('./src/bot/interactions');
 
 /**
  * Runs all scrapers, diffs against DB, persists changes, and sends alerts.
@@ -20,7 +24,7 @@ async function runAll() {
             console.log(`[run] ${scraper.name}: ${scraped.length} tires found >= 35"`);
         } catch (err) {
             console.error(`[run] ${scraper.name} scrape failed:`, err.message);
-            continue; // skip this source, try others
+            continue;
         }
 
         const dbRows = repo.getTiresBySource(scraper.name);
@@ -35,7 +39,6 @@ async function runAll() {
             `${result.unchanged.length} unchanged`
         );
 
-        // Persist all changes
         for (const tire of [...result.added, ...result.reactivated]) {
             repo.upsertActiveTire(scraper.name, tire);
         }
@@ -49,14 +52,13 @@ async function runAll() {
             repo.deactivateTires(result.removed.map(t => t.id));
         }
 
-        // Send alerts if anything alertable happened
         if (hasAlerts(result)) {
+            // Email
             try {
                 const emailData = await sendAlert(result, scraper.name);
                 if (emailData) {
                     repo.logEmail(emailData);
 
-                    // Mark newly inserted tires as notified
                     const fresh = repo.getTiresBySource(scraper.name);
                     const alertedSkus = new Set([
                         ...result.added.map(t => t.sku),
@@ -71,6 +73,7 @@ async function runAll() {
                 console.error('[run] Email send failed:', err.message);
             }
 
+            // Discord public feed (always fires regardless of subscriptions)
             try {
                 await sendDiscordAlert(result);
             } catch (err) {
@@ -80,7 +83,42 @@ async function runAll() {
     }
 }
 
-// Run once immediately on startup, then on schedule
-console.log('[blem-tracker] Starting up...');
-runAll();
-startScheduler(runAll);
+// --- Bootstrap ---
+// The Discord bot is the long-running process. It connects first, registers
+// its slash commands, attaches the interaction handler, and only then does
+// the scheduler begin running scrapes.
+
+async function main() {
+    console.log('[blem-tracker] Starting up...');
+
+    const client = getClient();
+
+    // Attach handlers BEFORE login so we don't miss any early events
+    attachInteractionHandler(client);
+
+    client.once('ready', async () => {
+        console.log(`[bot] Logged in as ${client.user.tag}`);
+
+        try {
+            await registerCommands();
+        } catch (err) {
+            console.error('[bot] Failed to register commands:', err.message);
+        }
+
+        // First scrape immediately, then on schedule
+        runAll();
+        startScheduler(runAll);
+    });
+
+    client.on('error',       (err) => console.error('[bot] Client error:', err));
+    client.on('shardError',  (err) => console.error('[bot] Shard error:', err));
+
+    try {
+        await login();
+    } catch (err) {
+        console.error('[bot] Login failed:', err.message);
+        process.exit(1);
+    }
+}
+
+main();

@@ -1,14 +1,17 @@
 /**
- * Discord notifier - posts blem alerts to a Discord channel via webhook.
+ * Discord notifier - posts blem alerts via the bot client.
  *
- * Set DISCORD_WEBHOOK_URL in your .env to enable.
- * If the variable is absent the notifier is silently skipped.
+ * Posts to DISCORD_ALERT_CHANNEL_ID (the public feed). This channel always
+ * receives every alert, regardless of any per-user subscriptions added in
+ * later phases.
  *
- * Discord embed color reference:
+ * Embed color reference:
  *   0x57F287 = green  (new)
  *   0xFEE75C = yellow (reactivated)
  *   0x5865F2 = blurple (changed)
  */
+
+const { getClient } = require('../bot/client');
 
 function tireFields(tires) {
     return tires.map(t => ({
@@ -56,39 +59,32 @@ function buildEmbeds({ added, reactivated, changed }) {
 }
 
 /**
- * Posts a blem alert to Discord.
+ * Posts a blem alert to the public feed channel.
  * Discord limits 10 embeds per message, so we chunk if needed.
  */
 async function sendDiscordAlert(diff) {
-    const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-    if (!WEBHOOK_URL) {
-        console.log('[discord] DISCORD_WEBHOOK_URL not set. Skipping.');
+    const channelId = process.env.DISCORD_ALERT_CHANNEL_ID;
+    if (!channelId) {
+        console.log('[discord] DISCORD_ALERT_CHANNEL_ID not set. Skipping.');
         return;
     }
 
     const embeds = buildEmbeds(diff);
     if (embeds.length === 0) return;
 
+    const client = getClient();
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) {
+        console.error(`[discord] Could not fetch channel ${channelId} (bot not in guild or missing permissions?)`);
+        return;
+    }
+
     // Discord allows max 10 embeds per message
-    const chunks = [];
     for (let i = 0; i < embeds.length; i += 10) {
-        chunks.push(embeds.slice(i, i + 10));
+        await channel.send({ embeds: embeds.slice(i, i + 10) });
     }
 
-    for (const chunk of chunks) {
-        const res = await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: chunk }),
-        });
-
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Discord webhook failed ${res.status}: ${text}`);
-        }
-    }
-
-    console.log('[discord] Alert posted to Discord channel.');
+    console.log(`[discord] Alert posted to #${channel.name || channelId}`);
 }
 
-module.exports = { sendDiscordAlert };
+module.exports = { sendDiscordAlert, buildEmbeds };
