@@ -1,12 +1,4 @@
-const { meetsMinSize } = require('../../src/scrapers/interco');
-
-// We need to expose meetsMinSize for testing.
-// Since it's currently unexported, this test file documents expected behavior
-// and the scraper unit test covers the full scrape() via a fixture.
-
 const cheerio = require('cheerio');
-const path = require('path');
-const fs = require('fs');
 
 // Minimal HTML fixture that mimics the Interco blem-list table structure.
 function makeRow(sku, size, price = '$200.00', qty = '4') {
@@ -40,30 +32,6 @@ function parseRows(html) {
     return tires;
 }
 
-const MIN = 35;
-
-function meetsMin(size) {
-    const leading = size.match(/^(\d+)[xX]/);
-    if (leading) {
-        const n = parseInt(leading[1], 10);
-        if (n > 100) return false;
-        return n >= MIN;
-    }
-    const afterSlash = size.match(/\/(\d+)/);
-    if (afterSlash) return parseInt(afterSlash[1], 10) >= MIN;
-    return false;
-}
-
-describe('Interco size filter (meetsMinSize)', () => {
-    test('includes 35" standard format', () => expect(meetsMin('35x12.50R18LT')).toBe(true));
-    test('includes 54" monster format',  () => expect(meetsMin('54x19.5/20LT')).toBe(true));
-    test('includes 42" bias slash format', () => expect(meetsMin('14/42-17')).toBe(true));
-    test('excludes 33" tire',  () => expect(meetsMin('33X12.50R20')).toBe(false));
-    test('excludes metric 235x85R16', () => expect(meetsMin('235x85R16')).toBe(false));
-    test('excludes metric 245x75R16', () => expect(meetsMin('245x75R16')).toBe(false));
-    test('excludes 28" tire',  () => expect(meetsMin('28x10R14')).toBe(false));
-});
-
 describe('Interco HTML parser', () => {
     test('parses a table row correctly', () => {
         const html = `<table><tbody>${makeRow('XBOG-5420', '54x19.5/20LT', '$888.00', '4')}</tbody></table>`;
@@ -80,6 +48,15 @@ describe('Interco HTML parser', () => {
         const html = `<table><tbody>
             ${makeRow('X001', '37x12.5R17')}
             ${makeRow('X002', '40x13.5R17')}
+        </tbody></table>`;
+        const tires = parseRows(html);
+        expect(tires).toHaveLength(2);
+    });
+
+    test('includes small tires — scraper no longer filters by size', () => {
+        const html = `<table><tbody>
+            ${makeRow('X001', '28x10R14')}
+            ${makeRow('X002', '235x85R16')}
         </tbody></table>`;
         const tires = parseRows(html);
         expect(tires).toHaveLength(2);

@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const scrapers             = require('./src/scrapers');
 const { diff, hasAlerts }  = require('./src/tracker');
+const { filterForPublicAlert, hasPublicAlerts } = require('./src/alertFilter');
 const { sendAlert }        = require('./src/notifier/email');
 const { sendDiscordAlert } = require('./src/notifier/discord');
 const { startScheduler }   = require('./src/scheduler');
@@ -10,6 +11,8 @@ const repo = require('./src/db/repository');
 const { getClient, login } = require('./src/bot/client');
 const { registerCommands } = require('./src/bot/commands');
 const { attachInteractionHandler } = require('./src/bot/interactions');
+
+const ALERTS_ENABLED = (process.env.ALERTS_ENABLED ?? 'true').toLowerCase() !== 'false';
 
 /**
  * Runs all scrapers, diffs against DB, persists changes, and sends alerts.
@@ -21,7 +24,7 @@ async function runAll() {
 
         try {
             scraped = await scraper.scrape();
-            console.log(`[run] ${scraper.name}: ${scraped.length} tires found >= 35"`);
+            console.log(`[run] ${scraper.name}: ${scraped.length} tires found`);
         } catch (err) {
             console.error(`[run] ${scraper.name} scrape failed:`, err.message);
             continue;
@@ -52,33 +55,45 @@ async function runAll() {
             repo.deactivateTires(result.removed.map(t => t.id));
         }
 
-        if (hasAlerts(result)) {
-            // Email
-            try {
-                const emailData = await sendAlert(result, scraper.name);
-                if (emailData) {
-                    repo.logEmail(emailData);
+        if (!hasAlerts(result)) continue;
 
-                    const fresh = repo.getTiresBySource(scraper.name);
-                    const alertedSkus = new Set([
-                        ...result.added.map(t => t.sku),
-                        ...result.reactivated.map(t => t.sku),
-                    ]);
-                    const notifyIds = fresh
-                        .filter(r => alertedSkus.has(r.sku))
-                        .map(r => r.id);
-                    repo.markNotified(notifyIds);
-                }
-            } catch (err) {
-                console.error('[run] Email send failed:', err.message);
-            }
+        if (!ALERTS_ENABLED) {
+            console.log(`[run] ALERTS_ENABLED=false — skipping notifications (${result.added.length} new, ${result.reactivated.length} reactivated suppressed)`);
+            continue;
+        }
 
-            // Discord public feed (always fires regardless of subscriptions)
-            try {
-                await sendDiscordAlert(result);
-            } catch (err) {
-                console.error('[run] Discord alert failed:', err.message);
+        // Apply public-feed filter (e.g. min 35" diameter)
+        const publicDiff = filterForPublicAlert(result);
+        if (!hasPublicAlerts(publicDiff)) {
+            console.log(`[run] No tires pass PUBLIC_ALERT_MIN_DIAMETER — skipping public feed`);
+            continue;
+        }
+
+        // Email
+        try {
+            const emailData = await sendAlert(publicDiff, scraper.name);
+            if (emailData) {
+                repo.logEmail(emailData);
+
+                const fresh = repo.getTiresBySource(scraper.name);
+                const alertedSkus = new Set([
+                    ...publicDiff.added.map(t => t.sku),
+                    ...publicDiff.reactivated.map(t => t.sku),
+                ]);
+                const notifyIds = fresh
+                    .filter(r => alertedSkus.has(r.sku))
+                    .map(r => r.id);
+                repo.markNotified(notifyIds);
             }
+        } catch (err) {
+            console.error('[run] Email send failed:', err.message);
+        }
+
+        // Discord public feed (always fires regardless of subscriptions)
+        try {
+            await sendDiscordAlert(publicDiff);
+        } catch (err) {
+            console.error('[run] Discord alert failed:', err.message);
         }
     }
 }
@@ -90,13 +105,15 @@ async function runAll() {
 
 async function main() {
     console.log('[blem-tracker] Starting up...');
+    console.log(`[blem-tracker] ALERTS_ENABLED=${ALERTS_ENABLED}`);
+    console.log(`[blem-tracker] PUBLIC_ALERT_MIN_DIAMETER=${process.env.PUBLIC_ALERT_MIN_DIAMETER ?? '35'}`);
 
     const client = getClient();
 
     // Attach handlers BEFORE login so we don't miss any early events
     attachInteractionHandler(client);
 
-    client.once('ready', async () => {
+    client.once('clientReady', async () => {
         console.log(`[bot] Logged in as ${client.user.tag}`);
 
         try {

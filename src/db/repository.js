@@ -1,4 +1,5 @@
 const { getDb } = require('./client');
+const { parseDiameter, parsePrice } = require('../utils/tires');
 
 // ---------------------------------------------------------------------------
 // Tire queries
@@ -11,6 +12,65 @@ function getTiresBySource(source) {
     return getDb()
         .prepare('SELECT * FROM tires WHERE source = ?')
         .all(source);
+}
+
+/**
+ * Returns active tires across all sources, optionally filtered.
+ * @param {object} filters
+ *   source    - exact source name match (optional)
+ *   brand     - case-insensitive substring match (optional)
+ *   sizeMin   - min overall diameter in inches (optional)
+ *   sizeMax   - max overall diameter in inches (optional)
+ *   priceMax  - max price in dollars (optional)
+ */
+function getActiveTires(filters = {}) {
+    const { source, brand, sizeMin, sizeMax, priceMax } = filters;
+
+    let rows = source
+        ? getDb().prepare('SELECT * FROM tires WHERE is_active = 1 AND source = ? ORDER BY source, sku').all(source)
+        : getDb().prepare('SELECT * FROM tires WHERE is_active = 1 ORDER BY source, sku').all();
+
+    if (brand) {
+        const b = brand.toLowerCase();
+        rows = rows.filter(r => (r.brand || '').toLowerCase().includes(b));
+    }
+    if (sizeMin != null) {
+        rows = rows.filter(r => {
+            const d = parseDiameter(r.size);
+            return d != null && d >= sizeMin;
+        });
+    }
+    if (sizeMax != null) {
+        rows = rows.filter(r => {
+            const d = parseDiameter(r.size);
+            return d != null && d <= sizeMax;
+        });
+    }
+    if (priceMax != null) {
+        rows = rows.filter(r => {
+            const p = parsePrice(r.price);
+            return p != null && p <= priceMax;
+        });
+    }
+
+    return rows;
+}
+
+/**
+ * Returns per-source summary rows:
+ *   { source, active_count, total_count, last_seen_at }
+ */
+function getTireSources() {
+    return getDb().prepare(`
+        SELECT
+            source,
+            SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_count,
+            COUNT(*) AS total_count,
+            MAX(last_seen_at) AS last_seen_at
+        FROM tires
+        GROUP BY source
+        ORDER BY source
+    `).all();
 }
 
 /**
@@ -93,6 +153,8 @@ function logEmail(emailData) {
 
 module.exports = {
     getTiresBySource,
+    getActiveTires,
+    getTireSources,
     upsertActiveTire,
     updateChangedTire,
     touchTire,
