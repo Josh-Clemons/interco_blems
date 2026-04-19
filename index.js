@@ -1,42 +1,80 @@
-const {getBlemSqlClient, startConnection, endConnection} = require('./server/clients/sqlClient.js');
-const {logger} = require('./server/clients/logClient.js');
-const {fetchTiresFromDatabase, saveTiresToDatabase} = require('./server/repository/blemRepository.js');
-const {fetchTiresFromInterco} = require('./server/service/intercoService.js');
-const {saveUpdateEmail} = require('./server/service/emailService.js');
-const {compareResults, updateTires, getTimeUntilNextRun} = require('./server/utils/utilShiznit.js');
+require('dotenv').config();
 
-let runs = 0;
-let successfulRuns = 0;
-let errorRuns = 0;
-const run = () => fetchTiresFromInterco().then(async results => {
-    const sqlClient = getBlemSqlClient()
-    await startConnection(sqlClient);
-    const databaseTires = await fetchTiresFromDatabase(sqlClient);
-    const updatedTires = updateTires(results, databaseTires);
-    const savedTires = await saveTiresToDatabase(updatedTires, sqlClient);
-    const {notifyTires} = await saveUpdateEmail(savedTires);
-    // only save tires to database if they changed after sending an email
-    compareResults(savedTires, notifyTires) || await saveTiresToDatabase(notifyTires, sqlClient);
-    await endConnection(sqlClient);
+const scrapers    = require('./src/scrapers');
+const { diff, hasAlerts } = require('./src/tracker');
+const { sendAlert }       = require('./src/notifier/email');
+const { startScheduler }  = require('./src/scheduler');
+const repo = require('./src/db/repository');
 
-    logger.info(`${++successfulRuns} successful runs (${++runs} total) in this cycle.`);
-}).catch(e => {
-    logger.error(`${++errorRuns} failed runs (${++runs} total) in this cycle.\n`, e);
-}).finally(() => {
-    scheduleNextRun();
-});
+/**
+ * Runs all scrapers, diffs against DB, persists changes, and sends alerts.
+ */
+async function runAll() {
+    for (const scraper of scrapers) {
+        console.log(`[run] Scraping ${scraper.name} (${scraper.url})`);
+        let scraped;
 
-function scheduleNextRun() {
-    setTimeout(() => {
-        run();
-    }, getTimeUntilNextRun());
+        try {
+            scraped = await scraper.scrape();
+            console.log(`[run] ${scraper.name}: ${scraped.length} tires found >= 35"`);
+        } catch (err) {
+            console.error(`[run] ${scraper.name} scrape failed:`, err.message);
+            continue; // skip this source, try others
+        }
+
+        const dbRows = repo.getTiresBySource(scraper.name);
+        const result = diff(scraped, dbRows);
+
+        console.log(
+            `[run] ${scraper.name}: ` +
+            `+${result.added.length} new, ` +
+            `~${result.reactivated.length} reactivated, ` +
+            `${result.changed.length} changed, ` +
+            `-${result.removed.length} removed, ` +
+            `${result.unchanged.length} unchanged`
+        );
+
+        // Persist all changes
+        for (const tire of [...result.added, ...result.reactivated]) {
+            repo.upsertActiveTire(scraper.name, tire);
+        }
+        for (const tire of result.changed) {
+            repo.updateChangedTire(tire);
+        }
+        for (const tire of result.unchanged) {
+            repo.touchTire(tire.id);
+        }
+        if (result.removed.length > 0) {
+            repo.deactivateTires(result.removed.map(t => t.id));
+        }
+
+        // Send email if anything alertable happened
+        if (hasAlerts(result)) {
+            try {
+                const emailData = await sendAlert(result, scraper.name);
+                if (emailData) {
+                    repo.logEmail(emailData);
+
+                    // Mark newly inserted tires as notified
+                    // We need to re-fetch their IDs since upsert ran above
+                    const fresh = repo.getTiresBySource(scraper.name);
+                    const alertedSkus = new Set([
+                        ...result.added.map(t => t.sku),
+                        ...result.reactivated.map(t => t.sku),
+                    ]);
+                    const notifyIds = fresh
+                        .filter(r => alertedSkus.has(r.sku))
+                        .map(r => r.id);
+                    repo.markNotified(notifyIds);
+                }
+            } catch (err) {
+                console.error('[run] Email send failed:', err.message);
+            }
+        }
+    }
 }
-run();
 
-
-
-
-
-
-
-
+// Run once immediately on startup, then on schedule
+console.log('[blem-tracker] Starting up...');
+runAll();
+startScheduler(runAll);

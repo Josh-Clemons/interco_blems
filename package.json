@@ -1,21 +1,21 @@
 {
-  "name": "y",
-  "version": "1.0.0",
-  "description": "",
+  "name": "blem-tracker",
+  "version": "2.0.0",
+  "description": "Tracks blemish tires from tire websites and alerts when new ones appear.",
   "main": "index.js",
   "scripts": {
-    "predev": "npm test",
+    "start": "node index.js",
     "dev": "node index.js",
-    "test": "jest"
+    "test": "jest --testPathPattern=test/"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
-    "log4js": "^6.9.1",
-    "nodemailer": "^6.9.12",
-    "pg": "^8.11.3",
-    "selenium-webdriver": "^4.18.1"
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.12"
   },
   "devDependencies": {
     "jest": "^29.7.0"

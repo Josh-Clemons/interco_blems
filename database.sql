@@ -1,26 +1,29 @@
-CREATE TABLE "blems" (
-    "id" SERIAL PRIMARY KEY,
-    "sku" VARCHAR (20) UNIQUE NOT NULL,
-    "brand" VARCHAR (40),
-    "size" VARCHAR (20),
-    "quantity" VARCHAR(3),
-    "price" VARCHAR(10),
-    "discontinued" BOOL default false,
-    "new" BOOL default true,
-    "notify" BOOL default true,
-    "created_at" TIMESTAMP default NOW(),
-    "updated_at" TIMESTAMP default NOW()
+-- Blem Tracker v2 Schema
+-- Run once manually, or let db.js auto-apply on startup.
+
+-- Tracks all blemish tires found across all scraped sources.
+-- 'source' allows future scrapers (e.g. 'discounttire') to share the same table.
+CREATE TABLE IF NOT EXISTS tires (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    source      TEXT    NOT NULL,               -- which site this came from e.g. 'interco'
+    sku         TEXT    NOT NULL,
+    title       TEXT,
+    brand       TEXT,
+    size        TEXT,
+    quantity    TEXT,
+    price       TEXT,
+    is_active   INTEGER NOT NULL DEFAULT 1,     -- 1 = currently listed, 0 = no longer on site
+    first_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    notified_at    TEXT,                        -- NULL until an alert email is sent
+    UNIQUE(source, sku)
 );
 
-CREATE TABLE blems_history AS TABLE blems WITH NO DATA;
-
-CREATE OR REPLACE FUNCTION save_history() RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO blems_history SELECT NEW.*;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER saveHistory
-    AFTER UPDATE ON blems
-    FOR EACH ROW EXECUTE PROCEDURE save_history();
+-- Audit log of every email sent.
+CREATE TABLE IF NOT EXISTS email_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    recipients TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    body       TEXT NOT NULL
+);
