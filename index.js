@@ -2,7 +2,8 @@ require('dotenv').config();
 
 const scrapers    = require('./src/scrapers');
 const { diff, hasAlerts } = require('./src/tracker');
-const { sendAlert }       = require('./src/notifier/email');
+const { sendAlert }           = require('./src/notifier/email');
+const { sendDiscordAlert }    = require('./src/notifier/discord');
 const { startScheduler }  = require('./src/scheduler');
 const repo = require('./src/db/repository');
 
@@ -48,7 +49,7 @@ async function runAll() {
             repo.deactivateTires(result.removed.map(t => t.id));
         }
 
-        // Send email if anything alertable happened
+        // Send alerts if anything alertable happened
         if (hasAlerts(result)) {
             try {
                 const emailData = await sendAlert(result, scraper.name);
@@ -56,7 +57,6 @@ async function runAll() {
                     repo.logEmail(emailData);
 
                     // Mark newly inserted tires as notified
-                    // We need to re-fetch their IDs since upsert ran above
                     const fresh = repo.getTiresBySource(scraper.name);
                     const alertedSkus = new Set([
                         ...result.added.map(t => t.sku),
@@ -69,6 +69,12 @@ async function runAll() {
                 }
             } catch (err) {
                 console.error('[run] Email send failed:', err.message);
+            }
+
+            try {
+                await sendDiscordAlert(result);
+            } catch (err) {
+                console.error('[run] Discord alert failed:', err.message);
             }
         }
     }
