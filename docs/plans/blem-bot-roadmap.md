@@ -312,7 +312,170 @@ a general subscription alert.
 
 ---
 
-## Phase 5 — Additional Scrapers
+## Phase 5 — Data Model Discovery
+
+*Before building more scrapers or the data-heavy features (cross-site search,
+history, stats), survey what the candidate sources actually expose so the
+unified tire model is grounded in reality, not assumed from interco alone.*
+
+*The bot tracks **off-road tires broadly** — blems are a highlighted subset
+(flagged via `is_blem`), not the only inventory. Users want to search, compare,
+and get alerts across any off-road tire source.*
+
+### Why this phase exists
+The current `tires` schema was shaped entirely around intercotire.com/blem-list:
+a single HTML table with sku, title, brand, size, quantity, price. That was
+enough for one source and a firehose alert, but every downstream feature now
+on the plan assumes a **unified model** across sources:
+
+- Phase 3/4 filter subscriptions by brand, size, price, sku — fields must
+  mean the same thing regardless of origin.
+- Phase 6 (`/find`) compares live catalog results across sites side-by-side.
+- Phase 7 (`/history`, `/stats`) aggregates events by source and computes
+  cross-source trends.
+- Phase 8 (`/admin sources`) reports per-source health and coverage.
+
+If source B uses load-rating terms interco doesn't, or source C lists prices
+in a range, or source D only exposes partial SKUs, the existing schema will
+silently lose information or force awkward string packing. Discovering that
+mid-Phase-7 is expensive. Discover it now.
+
+### Deliverables
+
+0. **Source registry** at `docs/sources/source-registry.md` (✅ created):
+   - Canonical list of all known tire sources with type (manufacturer /
+     reseller / marketplace / retailer), URL, blem status, priority
+   - "How to add a new source" checklist so more can be added later
+   - Field coverage matrix mapping unified model fields to each source
+   - Excluded sources with reasons (so we don't re-research them)
+
+1. **One discovery note per candidate source**, saved under `docs/sources/`:
+
+   **Manufacturers (sell blems direct):**
+   - `interco.md` (retroactive — document the source we already have)
+   - `treadwright.md` — TreadWright Tires (remold/retread mfr, Shopify)
+
+   **Resellers (dedicated blem inventory):**
+   - `tiremart.md` — TireMart.com (317+ blem SKUs, **highest priority**)
+   - `jegs.md` — JEGS (dedicated blem category, Cloudflare-protected)
+   - `summit.md` — Summit Racing (historically carries blems, intermittent)
+
+   **Marketplace (deferred, noisy):**
+   - `ebay.md` — eBay (multi-seller, inconsistent, heavy bot protection)
+
+   _Note: Most off-road tire sources are resellers, not manufacturers.
+   Only Interco and TreadWright were confirmed selling blems direct.
+   Major retailers (SimpleTire, TireRack, 4WheelParts) do NOT carry
+   blem-specific inventory — they are tracked in the excluded list._
+
+   Each note captures:
+   - Source URL(s) and rendering model (server-rendered HTML vs JS-required)
+   - robots.txt + ToS status (per Phase 6 etiquette rules)
+   - Blem page structure (table? cards? pagination? infinite scroll?)
+   - Catalog / search page structure (for the future `/find` feature)
+   - **Raw field inventory** — every data point surfaced on a listing,
+     verbatim from the site (e.g. "Load Index", "Tread Depth", "Weight",
+     "UTQG", "Sidewall Ply", "MSRP vs. Sale vs. Clearance")
+   - Sample parsed row in JSON — what a scraper could realistically emit
+   - Format quirks (price ranges, "Call for price", empty qty, MOQ, bundle
+     SKUs, size strings not matching the current regexes)
+   - At least 5 sample rows saved verbatim as an HTML fixture under
+     `test/fixtures/<source>.html` so we can write parser tests later
+     without hitting the network.
+
+2. **Unified tire model v2 proposal** at `docs/sources/unified-model.md`:
+   - Core fields every scraper MUST provide (sku, source, size, price)
+   - `is_blem` boolean flag — true for blemished tires, false for standard
+     inventory. Sources like Interco are all-blem; sources like SimpleTire
+     are all-standard; sources like TireMart/JEGS have both.
+   - Common optional fields observed on ≥2 sources (brand, quantity,
+     product_url, image_url, load_index, speed_rating, ply, weight, utqg,
+     product_line, msrp, sale_price, on_sale_from)
+   - Source-specific extras → kept in a JSON `extra` column rather than
+     new first-class columns, so schema evolution slows down
+   - Normalization rules (price → number in cents? size → canonical format?
+     brand casing? "Out of Stock" vs quantity=0?)
+   - **Stock quantity normalization** (feeds Phase 7 directly):
+     sites vary wildly — "4", "In Stock", "Low Stock", "Out of Stock",
+     "Call", blank, "1-3 available", bucketed labels, or nothing at all.
+     Propose a two-field model: `quantity_raw` (verbatim from site, for
+     display + audit) and `stock_state` (enum: `in_stock` | `low_stock` |
+     `out_of_stock` | `unknown`) plus optional `quantity_n` (integer when
+     the site exposes a real count). Downstream filters and cross-site
+     comparisons use `stock_state`; the raw string is preserved for the UI.
+   - Which v2 fields power which downstream features (table mapping model
+     fields to Phase 3/6/7 features)
+
+3. **Schema impact summary** — any migrations/new tables needed before
+   Phase 6+ makes sense. Most changes will be additive columns on `tires`
+   plus a JSON `extra` field; some may warrant a separate `tire_details`
+   sideload table if the data is large or rarely read.
+
+4. **Go / no-go per source** — which sources we plan to add in Phase 6
+   (renamed from "Phase 5 — Additional Scrapers"), which are blocked on
+   robots.txt/ToS, and which need JS rendering (informs puppeteer decision).
+
+### Process for each candidate
+```
+1. curl -sA "BlemBot/1.0 (+repo)" <url> > /tmp/<source>.html
+   — does the page contain the tire data? Yes → server-rendered. No → JS-required.
+
+2. If JS-required, note it. Rendering is an implementation detail for Phase 6,
+   not a blocker for discovery — screenshot + devtools Network tab is enough
+   to catalog fields.
+
+3. Inspect the raw HTML / JSON endpoints. List every field present per listing.
+
+4. Save a 5+ row fixture at test/fixtures/<source>.html (or .json).
+
+5. Fill in the discovery note from the template.
+
+6. Propose which fields map to existing columns, which are new common fields,
+   and which belong in the extra blob.
+```
+
+### Template for discovery notes
+Create `docs/sources/_template.md` with this structure so every note is
+comparable at a glance:
+
+```
+# <Source name>
+
+- URL(s):
+- Rendering:           server | js-required | mixed
+- robots.txt status:   allowed | disallowed | not-checked
+- ToS status:          ok | restrictive | needs review
+- Requires login:      yes | no
+
+## Blem / closeout page
+- Layout:              table | card grid | list | infinite scroll
+- Pagination:          none | numbered | load-more | infinite
+- Fields per listing:
+  - <field>: <example value> [maps to: tires.<col> | extra.<key> | drop]
+
+## Catalog / search page (for /find)
+- Layout:
+- Query mechanism:     URL param | POST | JS client-side
+- Fields per result:
+
+## Format quirks / gotchas
+
+## Sample parsed JSON row
+\`\`\`json
+{}
+\`\`\`
+
+## Go / no-go
+```
+
+### Scope boundary
+This phase writes docs and fixtures — **no scraper code, no schema changes.**
+Output of this phase is what unlocks safe decisions in all later phases.
+The existing interco scraper keeps running exactly as-is throughout.
+
+---
+
+## Phase 6 — Additional Scrapers
 *Add more blem/closeout sources. Each one is just a new file in `src/scrapers/`.*
 
 ### Scraper contract (unchanged from current)
@@ -328,16 +491,26 @@ module.exports = {
 Register in `src/scrapers/index.js`. That's the entire integration.
 
 ### Candidate sites to research and add
-Each needs a research spike before building — check if the page is server-rendered
-(curl | grep for tire data) or requires JS rendering.
 
-| Site | Section | Notes |
-|------|---------|-------|
-| Mickey Thompson | mtbrap.com or mickeythompsontires.com — check for closeout/blem page | Popular offroad brand |
-| Pro Comp | procompusa.com — check for clearance/blem section | Another major brand |
-| Maxxis | maxxis.com — check for blem program | Widely used |
-| BFGoodrich | bfgoodrichtires.com | Check for direct blem sales |
-| discount/aggregator | extremeterrain.com or rockauto clearance | May have multi-brand blems |
+See `docs/sources/source-registry.md` for the full evaluated list with
+priorities, field coverage, and the "How to add a new source" checklist.
+
+**Priority order for Phase 6 scrapers:**
+
+| Priority | Source      | Type         | Why                                             |
+|----------|-------------|--------------|------------------------------------------------ |
+| HIGH     | TireMart    | reseller     | 317+ blem SKUs + broader off-road catalog        |
+| HIGH     | SimpleTire  | aggregator   | Richest spec data, all brands, easy to scrape    |
+| HIGH     | TireRack    | aggregator   | Gold-standard specs + UTQG; heavy bot protection |
+| MEDIUM   | 4WheelParts | reseller     | Strong off-road focus, good brand mix, Cloudflare|
+| MEDIUM   | TreadWright | manufacturer | Blems + full catalog, Shopify (easy scrape)      |
+| MEDIUM   | JEGS        | reseller     | Dedicated blem category + broader tires          |
+| MEDIUM   | Summit      | reseller     | Good off-road selection, blems intermittent       |
+| LOW      | eBay        | marketplace  | Noisy, multi-seller, heavy bot protection        |
+
+_Original candidates (Mickey Thompson, Pro Comp, Maxxis, BFGoodrich,
+ExtremeTerrain) don't sell direct to consumer or have scrapeable inventory
+pages. Their tires are available through the aggregators/resellers above._
 
 ### Research process for each candidate
 1. `curl -s <url> | grep -i "blem\|closeout\|clearance"` — check for relevant section
@@ -393,7 +566,7 @@ added as an optional dependency and only loaded by scrapers that need it.
 
 ---
 
-## Phase 6 — Cross-Site Inventory Search
+## Phase 7 — Cross-Site Inventory Search
 *Search for a tire model or size across every source simultaneously, not just blems.*
 
 ### New concept: full inventory scrapers
@@ -455,7 +628,7 @@ await interaction.editReply({ embeds: buildFindEmbeds(results) });
 
 ---
 
-## Phase 7 — Price History & Trends
+## Phase 8 — Price History & Trends
 *Surface the change history the DB is already accumulating.*
 
 ### Commands
@@ -505,7 +678,7 @@ and `scrape_runs` on each run.
 
 ---
 
-## Phase 8 — Admin Commands
+## Phase 9 — Admin Commands
 *Server admin controls — force scrapes, manage sources, view run logs.*
 
 ### Commands (guild-admin role required)
@@ -542,20 +715,67 @@ module.exports = {
 
 ---
 
+## Phase 10 — Discord Message Formatting Overhaul
+
+*Exact look is TBD — this phase is a placeholder for the end-of-project UX
+polish once the data model, history, and admin surfaces are all in place.*
+
+### Why this comes last
+Every prior phase produces Discord messages with its own ad-hoc embed style:
+- Public feed alerts (Phase 1) — green/yellow/blurple per event type
+- /blems listings (Phase 2) — neutral dark-gray card rows
+- Subscription hits (Phase 3/4) — orange for pinned, blurple for broad,
+  grouped by event
+- /find results (Phase 7), /history + /stats (Phase 8), /admin (Phase 9) —
+  each will arrive with its own first-draft formatting
+
+By the time those are all shipped, there's enough surface area to look at
+holistically and decide what the bot should actually *feel* like.
+
+### Inputs to this phase
+- Real-world usage of phases 1–9 — which embeds are scannable vs noisy,
+  which commands users actually run, which numbers people squint at
+- The v2 data model from Phase 5 — what fields exist to show (images,
+  product URLs, load index, stock state vs raw qty, sale vs MSRP, etc.)
+- User-submitted wishes / screenshots / mockups collected during earlier
+  phases
+
+### Likely scope (not committed yet)
+- Unified color + emoji vocabulary across every command (today's events
+  all re-invent their own palette)
+- Product images in embeds when the scraper provides `image_url`
+- Clickable product links via `product_url`
+- A shared "tire card" component with consistent field order, so /blems,
+  /find, subscription hits, and /history all look like the same bot
+- Better density for list-heavy commands — fields vs. description-as-table
+  vs. plaintext blocks — to be decided after we see real content
+- Ephemeral vs. public defaults reviewed per command
+- Mobile-friendly check (most Discord use is on phones; long embeds
+  truncate badly)
+
+### Scope boundary
+Visual/UX only — no new commands, no new data, no new dispatch logic.
+If a formatting change needs a new data field, it goes back to Phase 5
+first.
+
+---
+
 ## Build Order & Dependencies
 
 ```
 Phase 1  (Bot Foundation)    ← prerequisite for everything
 Phase 2  (Browse/Search)     ← depends on Phase 1; no schema changes
 Phase 3  (Subscriptions)     ← depends on Phase 1; adds users + subscriptions tables
-Phase 4  (Watchlist)         ← depends on Phase 3 (reuses users table)
-Phase 5  (More Scrapers)     ← independent; can be done any time after Phase 1
-Phase 6  (Cross-site search) ← depends on Phase 5 (needs multiple scrapers to be useful)
-Phase 7  (History/Stats)     ← depends on Phase 1; adds tire_history + scrape_runs tables
-Phase 8  (Admin)             ← depends on Phase 7 (scrape_runs needed for /admin runs)
+Phase 4  (Pinned watches)    ← merged into /subscribe; extends subscriptions
+Phase 5  (Data discovery)    ← docs only; unblocks 6/7/8 schema decisions
+Phase 6  (More scrapers)     ← depends on Phase 5 + robots/ToS clearance
+Phase 7  (Cross-site search) ← depends on Phase 6 (needs multiple scrapers to be useful)
+Phase 8  (History/Stats)     ← depends on Phase 5 (schema) + Phase 1
+Phase 9  (Admin)             ← depends on Phase 8 (scrape_runs needed for /admin runs)
+Phase 10 (Formatting polish) ← depends on 1–9 being shipped and in use
 ```
 
-Recommended order: 1 → 2 → 3 → 4 → 7 → 8 → 5 → 6
+Recommended order: 1 → 2 → 3 → 4 → **5** → 8 → 9 → 6 → 7 → 10
 
 ---
 
@@ -589,8 +809,12 @@ src/
     index.js
     utils.js            (robots.txt check, politeFetch helper)
     interco.js
-    mickeythompson.js   (Phase 5)
-    procomp.js          (Phase 5)
+    tiremart.js         (Phase 6 — HIGH)
+    simpletire.js       (Phase 6 — HIGH)
+    tirerack.js         (Phase 6 — HIGH)
+    fourwheelparts.js   (Phase 6 — MEDIUM)
+    treadwright.js      (Phase 6 — MEDIUM)
+    jegs.js             (Phase 6 — MEDIUM)
     ...
   db/
     client.js

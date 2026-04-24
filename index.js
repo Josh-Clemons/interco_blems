@@ -8,6 +8,7 @@ const { sendDiscordAlert } = require('./src/notifier/discord');
 const { dispatchSubscriptionAlerts } = require('./src/subscriptions');
 const subDispatch = require('./src/notifier/subscriptionDispatch');
 const { startScheduler }   = require('./src/scheduler');
+const { startNightly }     = require('./src/scheduler');
 const repo = require('./src/db/repository');
 
 const { getClient, login } = require('./src/bot/client');
@@ -18,24 +19,41 @@ const ALERTS_ENABLED = (process.env.ALERTS_ENABLED ?? 'true').toLowerCase() !== 
 
 /**
  * Runs all scrapers, diffs against DB, persists changes, and sends alerts.
+ * Guarded by a mutex so overlapping scheduler ticks are skipped.
  */
+let running = false;
 async function runAll() {
+    if (running) {
+        log.info('[run] Already running — skipping this tick');
+        return;
+    }
+    running = true;
+    try {
+        await _runAll();
+    } finally {
+        running = false;
+    }
+}
+
+async function _runAll() {
     for (const scraper of scrapers) {
-        console.log(`[run] Scraping ${scraper.name} (${scraper.url})`);
+        log.info(`[run] Scraping ${scraper.name} (${scraper.url})`);
+        const runId = repo.startScrapeRun(scraper.name);
         let scraped;
 
         try {
             scraped = await scraper.scrape();
-            console.log(`[run] ${scraper.name}: ${scraped.length} tires found`);
+            log.info(`[run] ${scraper.name}: ${scraped.length} tires found`);
         } catch (err) {
-            console.error(`[run] ${scraper.name} scrape failed:`, err.message);
+            log.error(`[run] ${scraper.name} scrape failed:`, err.message);
+            repo.finishScrapeRun(runId, { tires_found: 0, added: 0, reactivated: 0, removed: 0, changed: 0, error: err.message });
             continue;
         }
 
         const dbRows = repo.getTiresBySource(scraper.name);
         const result = diff(scraped, dbRows);
 
-        console.log(
+        log.info(
             `[run] ${scraper.name}: ` +
             `+${result.added.length} new, ` +
             `~${result.reactivated.length} reactivated, ` +
@@ -44,23 +62,35 @@ async function runAll() {
             `${result.unchanged.length} unchanged`
         );
 
-        for (const tire of [...result.added, ...result.reactivated]) {
+        for (const tire of result.added) {
+            const info = repo.upsertActiveTire(scraper.name, tire);
+            const tireId = info.lastInsertRowid || repo.getTireBySourceSku(scraper.name, tire.sku)?.id;
+            if (tireId) repo.logTireEvent(tireId, 'added', {}, tire);
+        }
+        for (const tire of result.reactivated) {
             repo.upsertActiveTire(scraper.name, tire);
+            repo.logTireEvent(tire.id, 'returned', { price_cents: tire.old_price_cents, quantity_n: tire.old_quantity_n, stock_state: tire.old_stock_state }, tire);
         }
         for (const tire of result.changed) {
             repo.updateChangedTire(tire);
+            repo.logTireEvent(tire.id, 'changed', { price_cents: tire.old_price_cents, quantity_n: tire.old_quantity_n, stock_state: tire.old_stock_state }, tire);
         }
         for (const tire of result.unchanged) {
             repo.touchTire(tire.id);
         }
         if (result.removed.length > 0) {
             repo.deactivateTires(result.removed.map(t => t.id));
+            for (const tire of result.removed) {
+                repo.logTireEvent(tire.id, 'removed', tire, {});
+            }
         }
+
+        repo.finishScrapeRun(runId, { tires_found: scraped.length, added: result.added.length, reactivated: result.reactivated.length, removed: result.removed.length, changed: result.changed.length, error: null });
 
         if (!hasAlerts(result)) continue;
 
         if (!ALERTS_ENABLED) {
-            console.log(`[run] ALERTS_ENABLED=false — skipping notifications (${result.added.length} new, ${result.reactivated.length} reactivated suppressed)`);
+            log.info(`[run] ALERTS_ENABLED=false — skipping notifications (${result.added.length} new, ${result.reactivated.length} reactivated suppressed)`);
             continue;
         }
 
@@ -94,16 +124,16 @@ async function runAll() {
                     repo.markNotified(notifyIds);
                 }
             } catch (err) {
-                console.error('[run] Email send failed:', err.message);
+                log.error('[run] Email send failed:', err.message);
             }
 
             try {
                 await sendDiscordAlert(publicDiff);
             } catch (err) {
-                console.error('[run] Discord alert failed:', err.message);
+                log.error('[run] Discord alert failed:', err.message);
             }
         } else {
-            console.log(`[run] No tires pass PUBLIC_ALERT_MIN_DIAMETER — skipping public feed`);
+            log.info(`[run] No tires pass PUBLIC_ALERT_MIN_DIAMETER — skipping public feed`);
         }
 
         // --- Per-user subscription fan-out (always on the full diff) ---
@@ -115,10 +145,10 @@ async function runAll() {
                 buildEmbedsForUser:     subDispatch.buildEmbedsForUser,
             });
             if (stats.usersNotified || stats.dmFailures) {
-                console.log(`[run] Subscriptions: ${stats.usersNotified} notified, ${stats.dmFailures} failures`);
+                log.info(`[run] Subscriptions: ${stats.usersNotified} notified, ${stats.dmFailures} failures`);
             }
         } catch (err) {
-            console.error('[run] Subscription dispatch failed:', err.message);
+            log.error('[run] Subscription dispatch failed:', err.message);
         }
     }
 }
@@ -128,10 +158,99 @@ async function runAll() {
 // its slash commands, attaches the interaction handler, and only then does
 // the scheduler begin running scrapes.
 
+/**
+ * Nightly full crawl of SimpleTire — scrapes every SKU page regardless of cache.
+ */
+async function runSimpleTireFull() {
+    if (running) {
+        log.info('[nightly] runAll in progress — waiting for it to finish');
+        // Poll every 30s until the regular run completes
+        while (running) await new Promise(r => setTimeout(r, 30_000));
+    }
+    running = true;
+    const simpletire = require('./src/scrapers').simpletire;
+    const runId = repo.startScrapeRun(simpletire.name);
+    try {
+        log.info(`[nightly] Starting SimpleTire full crawl`);
+        const scraped = await simpletire.scrape({ full: true });
+        log.info(`[nightly] SimpleTire full crawl: ${scraped.length} tires`);
+
+        const dbRows = repo.getTiresBySource(simpletire.name);
+        const result = diff(scraped, dbRows);
+        log.info(
+            `[nightly] simpletire: ` +
+            `+${result.added.length} new, ` +
+            `~${result.reactivated.length} reactivated, ` +
+            `${result.changed.length} changed, ` +
+            `-${result.removed.length} removed, ` +
+            `${result.unchanged.length} unchanged`
+        );
+
+        for (const tire of result.added) {
+            const info = repo.upsertActiveTire(simpletire.name, tire);
+            const tireId = info.lastInsertRowid || repo.getTireBySourceSku(simpletire.name, tire.sku)?.id;
+            if (tireId) repo.logTireEvent(tireId, 'added', {}, tire);
+        }
+        for (const tire of result.reactivated) {
+            repo.upsertActiveTire(simpletire.name, tire);
+            repo.logTireEvent(tire.id, 'returned', { price_cents: tire.old_price_cents, quantity_n: tire.old_quantity_n, stock_state: tire.old_stock_state }, tire);
+        }
+        for (const tire of result.changed) {
+            repo.updateChangedTire(tire);
+            repo.logTireEvent(tire.id, 'changed', { price_cents: tire.old_price_cents, quantity_n: tire.old_quantity_n, stock_state: tire.old_stock_state }, tire);
+        }
+        for (const tire of result.unchanged) {
+            repo.touchTire(tire.id);
+        }
+        if (result.removed.length > 0) {
+            repo.deactivateTires(result.removed.map(t => t.id));
+            for (const tire of result.removed) {
+                repo.logTireEvent(tire.id, 'removed', tire, {});
+            }
+        }
+
+        repo.finishScrapeRun(runId, { tires_found: scraped.length, added: result.added.length, reactivated: result.reactivated.length, removed: result.removed.length, changed: result.changed.length, error: null });
+
+        if (hasAlerts(result) && ALERTS_ENABLED) {
+            const enrich = (t) => ({ ...t, source: simpletire.name });
+            const enrichedDiff = {
+                added:       result.added.map(enrich),
+                reactivated: result.reactivated.map(enrich),
+                changed:     result.changed.map(enrich),
+                removed:     result.removed.map(enrich),
+                unchanged:   result.unchanged,
+            };
+
+            const publicDiff = filterForPublicAlert(enrichedDiff);
+            if (hasPublicAlerts(publicDiff)) {
+                try { await sendDiscordAlert(publicDiff); } catch (err) {
+                    log.error('[nightly] Discord alert failed:', err.message);
+                }
+            }
+
+            try {
+                await dispatchSubscriptionAlerts(enrichedDiff, {
+                    getActiveSubscriptions: repo.getActiveSubscriptions,
+                    sendDm:                 subDispatch.sendDm,
+                    sendChannel:            subDispatch.sendChannel,
+                    buildEmbedsForUser:     subDispatch.buildEmbedsForUser,
+                });
+            } catch (err) {
+                log.error('[nightly] Subscription dispatch failed:', err.message);
+            }
+        }
+    } catch (err) {
+        log.error('[nightly] SimpleTire full crawl failed:', err.message);
+        repo.finishScrapeRun(runId, { tires_found: 0, added: 0, reactivated: 0, removed: 0, changed: 0, error: err.message });
+    } finally {
+        running = false;
+    }
+}
+
 async function main() {
-    console.log('[blem-tracker] Starting up...');
-    console.log(`[blem-tracker] ALERTS_ENABLED=${ALERTS_ENABLED}`);
-    console.log(`[blem-tracker] PUBLIC_ALERT_MIN_DIAMETER=${process.env.PUBLIC_ALERT_MIN_DIAMETER ?? '35'}`);
+    log.info('[blem-tracker] Starting up...');
+    log.info(`[blem-tracker] ALERTS_ENABLED=${ALERTS_ENABLED}`);
+    log.info(`[blem-tracker] PUBLIC_ALERT_MIN_DIAMETER=${process.env.PUBLIC_ALERT_MIN_DIAMETER ?? '35'}`);
 
     const client = getClient();
 
@@ -139,26 +258,27 @@ async function main() {
     attachInteractionHandler(client);
 
     client.once('clientReady', async () => {
-        console.log(`[bot] Logged in as ${client.user.tag}`);
+        log.info(`[bot] Logged in as ${client.user.tag}`);
 
         try {
             await registerCommands();
         } catch (err) {
-            console.error('[bot] Failed to register commands:', err.message);
+            log.error('[bot] Failed to register commands:', err.message);
         }
 
         // First scrape immediately, then on schedule
         runAll();
         startScheduler(runAll);
+        startNightly(runSimpleTireFull);
     });
 
-    client.on('error',       (err) => console.error('[bot] Client error:', err));
-    client.on('shardError',  (err) => console.error('[bot] Shard error:', err));
+    client.on('error',       (err) => log.error('[bot] Client error:', err));
+    client.on('shardError',  (err) => log.error('[bot] Shard error:', err));
 
     try {
         await login();
     } catch (err) {
-        console.error('[bot] Login failed:', err.message);
+        log.error('[bot] Login failed:', err.message);
         process.exit(1);
     }
 }

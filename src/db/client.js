@@ -26,6 +26,50 @@ function getDb() {
         { name: 'notify_removed',  ddl: "ADD COLUMN notify_removed INTEGER NOT NULL DEFAULT 0" },
     ]);
 
+
+    // Phase 8: tire_history + scrape_runs tables
+    _db.exec(`
+        CREATE TABLE IF NOT EXISTS tire_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            tire_id     INTEGER NOT NULL REFERENCES tires(id),
+            event       TEXT NOT NULL,
+            old_price_cents INTEGER,
+            new_price_cents INTEGER,
+            old_quantity_n  INTEGER,
+            new_quantity_n  INTEGER,
+            old_stock_state TEXT,
+            new_stock_state TEXT,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_history_tire ON tire_history(tire_id);
+        CREATE INDEX IF NOT EXISTS idx_history_event ON tire_history(event);
+
+        CREATE TABLE IF NOT EXISTS scrape_runs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            source      TEXT NOT NULL,
+            started_at  TEXT NOT NULL,
+            finished_at TEXT,
+            tires_found INTEGER,
+            added       INTEGER DEFAULT 0,
+            reactivated INTEGER DEFAULT 0,
+            removed     INTEGER DEFAULT 0,
+            changed     INTEGER DEFAULT 0,
+            error       TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_runs_source ON scrape_runs(source);
+    `);
+
+    // v2 indexes (safe to run repeatedly)
+    _db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_tires_source   ON tires(source);
+        CREATE INDEX IF NOT EXISTS idx_tires_brand    ON tires(brand);
+        CREATE INDEX IF NOT EXISTS idx_tires_size     ON tires(size);
+        CREATE INDEX IF NOT EXISTS idx_tires_blem     ON tires(is_blem);
+        CREATE INDEX IF NOT EXISTS idx_tires_active   ON tires(is_active);
+        CREATE INDEX IF NOT EXISTS idx_tires_category ON tires(category);
+        CREATE INDEX IF NOT EXISTS idx_tires_price    ON tires(price_cents);
+    `);
+
     return _db;
 }
 

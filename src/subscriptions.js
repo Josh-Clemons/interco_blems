@@ -18,7 +18,7 @@
  * experience). When sku is null it behaves like a broad subscription.
  */
 
-const { parseDiameter, parsePrice } = require('./utils/tires');
+const { parseDiameter } = require('./utils/tires');
 
 /**
  * Returns true iff the given tire passes every filter on the subscription.
@@ -46,8 +46,7 @@ function tireMatchesSubscription(tire, sub) {
     }
 
     if (sub.price_max != null) {
-        const p = parsePrice(tire.price);
-        if (p == null || p > sub.price_max) return false;
+        if (tire.price_cents == null || tire.price_cents > sub.price_max * 100) return false;
     }
 
     return true;

@@ -1,4 +1,5 @@
 const cheerio = require('cheerio');
+const { parsePrice } = require('../utils/tires');
 
 const NAME = 'interco';
 const URL = 'https://www.intercotire.com/blem-list';
@@ -28,7 +29,30 @@ async function scrape() {
 
         if (!sku || !size) return; // skip malformed rows
 
-        tires.push({ sku, title, brand, size, quantity: qty, price });
+        // Parse v2 fields
+        const priceDollars = parsePrice(price);
+        const priceCents = priceDollars != null ? Math.round(priceDollars * 100) : null;
+        const quantityN = /^\d+$/.test(qty) ? parseInt(qty, 10) : null;
+        let stockState = 'unknown';
+        if (quantityN != null) {
+            stockState = quantityN > 4 ? 'in_stock' : quantityN > 0 ? 'low_stock' : 'out_of_stock';
+        }
+
+        const href = $row.find('td[headers="view-views-conditional-field-table-column"] a').attr('href');
+        const productUrl = href ? `https://www.intercotire.com${href}` : null;
+
+        tires.push({
+            sku,
+            title,
+            brand,
+            size,
+            is_blem: 1,
+            quantity_raw: qty,
+            quantity_n: quantityN,
+            stock_state: stockState,
+            price_cents: priceCents,
+            product_url: productUrl,
+        });
     });
 
     return tires;

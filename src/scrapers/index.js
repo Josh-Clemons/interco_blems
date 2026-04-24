@@ -7,12 +7,25 @@
  *   url     {string}  - page being scraped (informational)
  *   scrape  {async () => Tire[]}
  *
- * Tire shape:
- *   { sku, title, brand, size, quantity, price }
+ * Tire shape (v2):
+ *   { sku, title, brand, product_line, category, size, is_blem,
+ *     quantity, quantity_raw, quantity_n, stock_state,
+ *     price, price_cents, msrp_cents, sale_price_cents,
+ *     load_index, speed_rating, load_range, ply,
+ *     weight_oz, tread_depth_32, overall_diam, section_width,
+ *     utqg_wear, utqg_traction, utqg_temp, three_pms,
+ *     product_url, image_url, extra }
+ *
+ * All fields except sku are optional — missing fields default to null.
  */
 
-const interco = require('./interco');
+const interco    = require('./interco');
+const treadwright = require('./treadwright');
+const tiremart   = require('./tiremart');
+// disabling simpleTire, their bot protection doesn't like when we spam the site several thousand times
+// const simpletire = require('./simpletire');
 
-const scrapers = [interco];
+const scrapers = [interco, treadwright, tiremart, simpletire];
 
 module.exports = scrapers;
+module.exports.simpletire = simpletire;

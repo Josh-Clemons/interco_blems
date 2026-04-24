@@ -24,7 +24,7 @@ function filterForPublicAlert(diff) {
     if (!min || Number.isNaN(min) || min <= 0) return diff; // no filtering
 
     const passes = (tire) => {
-        const d = parseDiameter(tire.size);
+        const d = tire.overall_diam || parseDiameter(tire.size);
         return d != null && d >= min;
     };
 

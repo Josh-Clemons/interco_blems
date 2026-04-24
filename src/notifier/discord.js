@@ -12,11 +12,12 @@
  */
 
 const { getClient } = require('../bot/client');
+const log = require('../logger');
 
 function tireFields(tires) {
     return tires.map(t => ({
         name: `${t.sku} — ${t.size}`,
-        value: `Brand: ${t.brand || 'N/A'}\nQty: ${t.quantity}  |  Price: ${t.price}`,
+        value: `Brand: ${t.brand || 'N/A'}\nQty: ${t.quantity_raw ?? '?'}  |  Price: ${t.price_cents != null ? '$' + (t.price_cents / 100).toFixed(2) : 'N/A'}`,
         inline: false,
     }));
 }
@@ -65,7 +66,7 @@ function buildEmbeds({ added, reactivated, changed }) {
 async function sendDiscordAlert(diff) {
     const channelId = process.env.DISCORD_ALERT_CHANNEL_ID;
     if (!channelId) {
-        console.log('[discord] DISCORD_ALERT_CHANNEL_ID not set. Skipping.');
+        log.info('[discord] DISCORD_ALERT_CHANNEL_ID not set. Skipping.');
         return;
     }
 
@@ -75,7 +76,7 @@ async function sendDiscordAlert(diff) {
     const client = getClient();
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) {
-        console.error(`[discord] Could not fetch channel ${channelId} (bot not in guild or missing permissions?)`);
+        log.error(`[discord] Could not fetch channel ${channelId} (bot not in guild or missing permissions?)`);
         return;
     }
 
@@ -84,7 +85,7 @@ async function sendDiscordAlert(diff) {
         await channel.send({ embeds: embeds.slice(i, i + 10) });
     }
 
-    console.log(`[discord] Alert posted to #${channel.name || channelId}`);
+    log.info(`[discord] Alert posted to #${channel.name || channelId}`);
 }
 
 module.exports = { sendDiscordAlert, buildEmbeds };

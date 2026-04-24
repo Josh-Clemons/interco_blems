@@ -7,8 +7,10 @@ describe('diff()', () => {
         title: 'Some Tire 35x12.5R17',
         brand: 'BigMT',
         size: '35x12.5R17',
-        quantity: '4',
-        price: '$200.00',
+        quantity_n: 4,
+        quantity_raw: '4',
+        stock_state: 'in_stock',
+        price_cents: 20000,
         ...overrides,
     });
 
@@ -19,8 +21,10 @@ describe('diff()', () => {
         title: 'Some Tire 35x12.5R17',
         brand: 'BigMT',
         size: '35x12.5R17',
-        quantity: '4',
-        price: '$200.00',
+        quantity_n: 4,
+        quantity_raw: '4',
+        stock_state: 'in_stock',
+        price_cents: 20000,
         is_active: 1,
         ...overrides,
     });
@@ -41,16 +45,16 @@ describe('diff()', () => {
     });
 
     test('detects price change', () => {
-        const result = diff([base({ price: '$250.00' })], [dbRow()]);
+        const result = diff([base({ price_cents: 25000 })], [dbRow()]);
         expect(result.changed).toHaveLength(1);
-        expect(result.changed[0].price).toBe('$250.00');
+        expect(result.changed[0].price_cents).toBe(25000);
         expect(result.added).toHaveLength(0);
     });
 
     test('detects quantity change', () => {
-        const result = diff([base({ quantity: '2' })], [dbRow()]);
+        const result = diff([base({ quantity_n: 2, quantity_raw: '2' })], [dbRow()]);
         expect(result.changed).toHaveLength(1);
-        expect(result.changed[0].quantity).toBe('2');
+        expect(result.changed[0].quantity_n).toBe(2);
     });
 
     test('detects removal when tire disappears from scrape', () => {
@@ -76,7 +80,7 @@ describe('diff()', () => {
     test('handles multiple tires mixed', () => {
         const scraped = [
             base({ sku: 'NEW1', size: '37x12.5R17' }),     // new
-            base({ sku: 'X123', quantity: '6' }),           // changed qty
+            base({ sku: 'X123', quantity_n: 6, quantity_raw: '6' }),           // changed qty
             base({ sku: 'SAME', size: '40x13.5R17' }),      // unchanged
         ];
         const db = [

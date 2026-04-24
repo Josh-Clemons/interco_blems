@@ -16,6 +16,16 @@
  * The "changed" set is informational and included in emails if non-empty.
  */
 
+function hasChanged(scraped, existing) {
+    if (scraped.price_cents !== existing.price_cents) return true;
+    if (scraped.quantity_n !== existing.quantity_n) return true;
+
+    if (scraped.stock_state && existing.stock_state &&
+        scraped.stock_state !== existing.stock_state) return true;
+
+    return false;
+}
+
 function diff(scraped, dbRows) {
     const bySkuDb = new Map(dbRows.map(r => [r.sku, r]));
     const bySkuScraped = new Map(scraped.map(t => [t.sku, t]));
@@ -33,9 +43,9 @@ function diff(scraped, dbRows) {
         if (!existing) {
             added.push(tire);
         } else if (!existing.is_active) {
-            reactivated.push({ ...tire, id: existing.id });
-        } else if (existing.quantity !== tire.quantity || existing.price !== tire.price) {
-            changed.push({ ...tire, id: existing.id });
+            reactivated.push({ ...tire, id: existing.id, old_price_cents: existing.price_cents, old_quantity_n: existing.quantity_n, old_stock_state: existing.stock_state });
+        } else if (hasChanged(tire, existing)) {
+            changed.push({ ...tire, id: existing.id, old_price_cents: existing.price_cents, old_quantity_n: existing.quantity_n, old_stock_state: existing.stock_state });
         } else {
             unchanged.push({ ...tire, id: existing.id });
         }

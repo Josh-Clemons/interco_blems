@@ -22,13 +22,26 @@ function getTiresBySource(source) {
  *   sizeMin   - min overall diameter in inches (optional)
  *   sizeMax   - max overall diameter in inches (optional)
  *   priceMax  - max price in dollars (optional)
+ *   isBlem    - true/false to filter by blem status (optional)
+ *   category  - exact category match (optional)
+ *   stockState - exact stock_state match (optional)
  */
 function getActiveTires(filters = {}) {
-    const { source, brand, sizeMin, sizeMax, priceMax } = filters;
+    const { source, brand, sizeMin, sizeMax, priceMax, isBlem, category, stockState } = filters;
 
-    let rows = source
-        ? getDb().prepare('SELECT * FROM tires WHERE is_active = 1 AND source = ? ORDER BY source, sku').all(source)
-        : getDb().prepare('SELECT * FROM tires WHERE is_active = 1 ORDER BY source, sku').all();
+    const clauses = ['is_active = 1'];
+    const params = [];
+
+    if (source) { clauses.push('source = ?'); params.push(source); }
+    if (isBlem === true) { clauses.push('is_blem = 1'); }
+    if (isBlem === false) { clauses.push('is_blem = 0'); }
+    if (category) { clauses.push('category = ?'); params.push(category); }
+    if (stockState) { clauses.push('stock_state = ?'); params.push(stockState); }
+    if (priceMax != null) { clauses.push('price_cents <= ?'); params.push(Math.round(priceMax * 100)); }
+
+    let rows = getDb()
+        .prepare(`SELECT * FROM tires WHERE ${clauses.join(' AND ')} ORDER BY source, sku`)
+        .all(...params);
 
     if (brand) {
         const b = brand.toLowerCase();
@@ -36,20 +49,14 @@ function getActiveTires(filters = {}) {
     }
     if (sizeMin != null) {
         rows = rows.filter(r => {
-            const d = parseDiameter(r.size);
+            const d = r.overall_diam || parseDiameter(r.size);
             return d != null && d >= sizeMin;
         });
     }
     if (sizeMax != null) {
         rows = rows.filter(r => {
-            const d = parseDiameter(r.size);
+            const d = r.overall_diam || parseDiameter(r.size);
             return d != null && d <= sizeMax;
-        });
-    }
-    if (priceMax != null) {
-        rows = rows.filter(r => {
-            const p = parsePrice(r.price);
-            return p != null && p <= priceMax;
         });
     }
 
@@ -73,35 +80,60 @@ function getTireSources() {
     `).all();
 }
 
+// ---------------------------------------------------------------------------
+// v2 column list for INSERT/UPSERT
+// ---------------------------------------------------------------------------
+const TIRE_COLS = [
+    'source', 'sku', 'title', 'brand', 'product_line', 'category', 'size',
+    'is_blem', 'quantity_raw', 'quantity_n', 'stock_state',
+    'price_cents', 'msrp_cents', 'sale_price_cents',
+    'load_index', 'speed_rating', 'load_range', 'ply',
+    'weight_oz', 'tread_depth_32', 'overall_diam', 'section_width',
+    'utqg_wear', 'utqg_traction', 'utqg_temp', 'three_pms',
+    'product_url', 'image_url', 'extra',
+];
+
+// Build the upsert statement once
+const UPSERT_SQL = `
+    INSERT INTO tires (${TIRE_COLS.join(', ')}, is_active, notified_at)
+    VALUES (${TIRE_COLS.map(c => '@' + c).join(', ')}, 1, NULL)
+    ON CONFLICT(source, sku) DO UPDATE SET
+        ${TIRE_COLS.filter(c => c !== 'source' && c !== 'sku')
+            .map(c => `${c} = excluded.${c}`)
+            .join(',\n        ')},
+        is_active    = 1,
+        last_seen_at = datetime('now'),
+        notified_at  = NULL
+`;
+
 /**
  * Upserts a newly-scraped tire (added or reactivated).
  * Sets is_active=1, updates last_seen_at, and clears notified_at so it alerts again.
+ * Accepts a tire object with any v2 fields; missing fields default to null.
  */
 function upsertActiveTire(source, tire) {
-    return getDb().prepare(`
-        INSERT INTO tires (source, sku, title, brand, size, quantity, price, is_active, notified_at)
-        VALUES (@source, @sku, @title, @brand, @size, @quantity, @price, 1, NULL)
-        ON CONFLICT(source, sku) DO UPDATE SET
-            title        = excluded.title,
-            brand        = excluded.brand,
-            size         = excluded.size,
-            quantity     = excluded.quantity,
-            price        = excluded.price,
-            is_active    = 1,
-            last_seen_at = datetime('now'),
-            notified_at  = NULL
-    `).run({ source, ...tire });
+    const row = { source };
+    for (const col of TIRE_COLS) {
+        if (col === 'source') continue;
+        row[col] = tire[col] ?? null;
+    }
+    // Serialize extra to JSON if it's an object
+    if (row.extra && typeof row.extra === 'object') {
+        row.extra = JSON.stringify(row.extra);
+    }
+    return getDb().prepare(UPSERT_SQL).run(row);
 }
 
 /**
  * Updates qty/price for a changed tire and clears notified_at if you want change alerts.
- * (Currently we update silently - change emails are informational only, not re-alerting.)
  */
 function updateChangedTire(tire) {
     return getDb().prepare(`
         UPDATE tires
-        SET quantity     = @quantity,
-            price        = @price,
+        SET quantity_raw = @quantity_raw,
+            quantity_n   = @quantity_n,
+            stock_state  = @stock_state,
+            price_cents  = @price_cents,
             last_seen_at = datetime('now')
         WHERE id = @id
     `).run(tire);
@@ -231,6 +263,91 @@ function deactivateSubscription(id, userId) {
     return info.changes > 0;
 }
 
+// ---------------------------------------------------------------------------
+// Tire history + scrape runs (Phase 8)
+// ---------------------------------------------------------------------------
+
+function getTireBySourceSku(source, sku) {
+    return getDb().prepare('SELECT * FROM tires WHERE source = ? AND sku = ?').get(source, sku);
+}
+
+function logTireEvent(tireId, event, oldValues, newValues) {
+    return getDb().prepare(`
+        INSERT INTO tire_history (tire_id, event, old_price_cents, new_price_cents, old_quantity_n, new_quantity_n, old_stock_state, new_stock_state)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(tireId, event, oldValues.price_cents ?? null, newValues.price_cents ?? null, oldValues.quantity_n ?? null, newValues.quantity_n ?? null, oldValues.stock_state ?? null, newValues.stock_state ?? null);
+}
+
+function getTireHistory(sku, source) {
+    return getDb().prepare(`
+        SELECT h.*, t.sku, t.title, t.source
+        FROM tire_history h
+        JOIN tires t ON t.id = h.tire_id
+        WHERE t.sku = ? AND (? IS NULL OR t.source = ?)
+        ORDER BY h.recorded_at DESC
+        LIMIT 50
+    `).all(sku, source ?? null, source ?? null);
+}
+
+function startScrapeRun(source) {
+    return getDb().prepare(`
+        INSERT INTO scrape_runs (source, started_at) VALUES (?, datetime('now'))
+    `).run(source).lastInsertRowid;
+}
+
+function finishScrapeRun(runId, stats) {
+    return getDb().prepare(`
+        UPDATE scrape_runs SET
+            finished_at = datetime('now'),
+            tires_found = @tires_found,
+            added = @added,
+            reactivated = @reactivated,
+            removed = @removed,
+            changed = @changed,
+            error = @error
+        WHERE id = @id
+    `).run({ id: runId, ...stats });
+}
+
+function getRecentRuns(limit = 20) {
+    return getDb().prepare(`
+        SELECT * FROM scrape_runs ORDER BY started_at DESC LIMIT ?
+    `).all(limit);
+}
+
+function getBotStats() {
+    const db = getDb();
+    const totalBySource = db.prepare(`
+        SELECT source,
+            SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active,
+            COUNT(*) AS total
+        FROM tires GROUP BY source
+    `).all();
+
+    const last7d = db.prepare(`
+        SELECT event, COUNT(*) as cnt
+        FROM tire_history
+        WHERE recorded_at >= datetime('now', '-7 days')
+        GROUP BY event
+    `).all();
+
+    const last30d = db.prepare(`
+        SELECT event, COUNT(*) as cnt
+        FROM tire_history
+        WHERE recorded_at >= datetime('now', '-30 days')
+        GROUP BY event
+    `).all();
+
+    const lastRun = db.prepare(`
+        SELECT source, MAX(finished_at) as last_run
+        FROM scrape_runs
+        WHERE finished_at IS NOT NULL
+        GROUP BY source
+    `).all();
+
+    return { totalBySource, last7d, last30d, lastRun };
+}
+
 module.exports = {
     getTiresBySource,
     getActiveTires,
@@ -247,4 +364,11 @@ module.exports = {
     listSubscriptionsForUser,
     getActiveSubscriptions,
     deactivateSubscription,
+    getTireBySourceSku,
+    logTireEvent,
+    getTireHistory,
+    startScrapeRun,
+    finishScrapeRun,
+    getRecentRuns,
+    getBotStats,
 };

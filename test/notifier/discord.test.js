@@ -7,8 +7,10 @@ const baseTire = (sku, size) => ({
     title: `${sku} ${size}`,
     brand: 'TestBrand',
     size,
-    quantity: '4',
-    price: '$300.00',
+    quantity_n: 4,
+    quantity_raw: '4',
+    stock_state: 'in_stock',
+    price_cents: 30000,
 });
 
 describe('buildEmbeds()', () => {

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
+const log = require('../logger');
 
 const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
 
@@ -80,7 +81,7 @@ function buildHtml({ added, reactivated, changed, source }) {
  */
 async function sendAlert(diff, source) {
     if (NOTIFY_EMAILS.length === 0) {
-        console.warn('[email] No NOTIFY_EMAILS configured. Skipping send.');
+        log.warn('[email] No NOTIFY_EMAILS configured. Skipping send.');
         return null;
     }
 
@@ -96,7 +97,7 @@ async function sendAlert(diff, source) {
         html:    body,
     });
 
-    console.log(`[email] Alert sent to ${NOTIFY_EMAILS.join(', ')}`);
+    log.info(`[email] Alert sent to ${NOTIFY_EMAILS.join(', ')}`);
 
     return {
         recipients: NOTIFY_EMAILS.join(','),

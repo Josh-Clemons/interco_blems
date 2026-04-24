@@ -11,8 +11,10 @@ const tire = (over = {}) => ({
     sku: 'SKU1',
     brand: 'Bogger',
     size: '37x12.50R17LT',
-    quantity: '4',
-    price: '$450.00',
+    quantity_n: 4,
+    quantity_raw: '4',
+    stock_state: 'in_stock',
+    price_cents: 45000,
     ...over,
 });
 
@@ -73,7 +75,7 @@ describe('tireMatchesSubscription', () => {
     test('all filters AND together', () => {
         const s = sub({ source: 'interco', brand: 'bogger', size_min: 35, price_max: 500 });
         expect(tireMatchesSubscription(tire(), s)).toBe(true);
-        expect(tireMatchesSubscription(tire({ price: '$999.00' }), s)).toBe(false);
+        expect(tireMatchesSubscription(tire({ price_cents: 99900 }), s)).toBe(false);
     });
 });
 
