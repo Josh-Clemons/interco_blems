@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const log                  = require('./src/logger');
 const scrapers             = require('./src/scrapers');
 const { diff, hasAlerts }  = require('./src/tracker');
 const { filterForPublicAlert, hasPublicAlerts } = require('./src/alertFilter');
@@ -63,9 +64,8 @@ async function _runAll() {
         );
 
         for (const tire of result.added) {
-            const info = repo.upsertActiveTire(scraper.name, tire);
-            const tireId = info.lastInsertRowid || repo.getTireBySourceSku(scraper.name, tire.sku)?.id;
-            if (tireId) repo.logTireEvent(tireId, 'added', {}, tire);
+            const row = repo.upsertActiveTire(scraper.name, tire);
+            if (row?.id) repo.logTireEvent(row.id, 'added', {}, tire);
         }
         for (const tire of result.reactivated) {
             repo.upsertActiveTire(scraper.name, tire);

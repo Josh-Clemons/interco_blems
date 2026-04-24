@@ -16,7 +16,7 @@ const EMBED_COLOR = 0x2B2D31; // neutral dark-gray
 function tireField(tire) {
     return {
         name: `${tire.sku} — ${tire.size}`,
-        value: `**${tire.brand || 'N/A'}**\nQty: ${tire.quantity}  |  Price: ${tire.price}  |  Source: \`${tire.source}\``,
+        value: `**${tire.brand || 'N/A'}**\nQty: ${tire.quantity_raw ?? '?'}  |  Price: ${tire.price_cents != null ? '$' + (tire.price_cents / 100).toFixed(2) : 'N/A'}  |  Source: \`${tire.source}\``,
         inline: false,
     };
 }

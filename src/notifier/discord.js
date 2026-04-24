@@ -14,12 +14,26 @@
 const { getClient } = require('../bot/client');
 const log = require('../logger');
 
+// Discord's total embed character limit per message is 6000.
+// We cap tires shown per embed and send each embed as its own message
+// to stay well within limits regardless of batch size.
+const MAX_TIRES_SHOWN = 20;
+
 function tireFields(tires) {
-    return tires.map(t => ({
-        name: `${t.sku} — ${t.size}`,
-        value: `Brand: ${t.brand || 'N/A'}\nQty: ${t.quantity_raw ?? '?'}  |  Price: ${t.price_cents != null ? '$' + (t.price_cents / 100).toFixed(2) : 'N/A'}`,
+    const shown = tires.slice(0, MAX_TIRES_SHOWN);
+    const fields = shown.map(t => ({
+        name: `${t.sku} — ${t.size || 'N/A'}`,
+        value: `${t.brand || 'N/A'} | Qty: ${t.quantity_raw ?? '?'} | Price: ${t.price_cents != null ? '$' + (t.price_cents / 100).toFixed(2) : 'N/A'}`,
         inline: false,
     }));
+    if (tires.length > MAX_TIRES_SHOWN) {
+        fields.push({
+            name: `…and ${tires.length - MAX_TIRES_SHOWN} more`,
+            value: 'Use `/blems` to see all.',
+            inline: false,
+        });
+    }
+    return fields;
 }
 
 function buildEmbeds({ added, reactivated, changed }) {
@@ -32,7 +46,6 @@ function buildEmbeds({ added, reactivated, changed }) {
             color: 0x57F287,
             fields: tireFields(added),
             timestamp: ts,
-            footer: { text: 'intercotire.com/blem-list' },
         });
     }
 
@@ -42,7 +55,6 @@ function buildEmbeds({ added, reactivated, changed }) {
             color: 0xFEE75C,
             fields: tireFields(reactivated),
             timestamp: ts,
-            footer: { text: 'intercotire.com/blem-list' },
         });
     }
 
@@ -52,7 +64,6 @@ function buildEmbeds({ added, reactivated, changed }) {
             color: 0x5865F2,
             fields: tireFields(changed),
             timestamp: ts,
-            footer: { text: 'intercotire.com/blem-list' },
         });
     }
 
@@ -61,7 +72,7 @@ function buildEmbeds({ added, reactivated, changed }) {
 
 /**
  * Posts a blem alert to the public feed channel.
- * Discord limits 10 embeds per message, so we chunk if needed.
+ * Each embed is sent as its own message to avoid the 6000-char per-message limit.
  */
 async function sendDiscordAlert(diff) {
     const channelId = process.env.DISCORD_ALERT_CHANNEL_ID;
@@ -80,9 +91,8 @@ async function sendDiscordAlert(diff) {
         return;
     }
 
-    // Discord allows max 10 embeds per message
-    for (let i = 0; i < embeds.length; i += 10) {
-        await channel.send({ embeds: embeds.slice(i, i + 10) });
+    for (const embed of embeds) {
+        await channel.send({ embeds: [embed] });
     }
 
     log.info(`[discord] Alert posted to #${channel.name || channelId}`);

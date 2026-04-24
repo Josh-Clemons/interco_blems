@@ -475,7 +475,7 @@ The existing interco scraper keeps running exactly as-is throughout.
 
 ---
 
-## Phase 6 — Additional Scrapers
+## Phase 6 — Additional Scrapers ✅ (no-proxy sources done)
 *Add more blem/closeout sources. Each one is just a new file in `src/scrapers/`.*
 
 ### Scraper contract (unchanged from current)
@@ -490,34 +490,24 @@ module.exports = {
 ```
 Register in `src/scrapers/index.js`. That's the entire integration.
 
-### Candidate sites to research and add
+### Status
 
-See `docs/sources/source-registry.md` for the full evaluated list with
-priorities, field coverage, and the "How to add a new source" checklist.
+| Source      | Status                                    | Notes                                           |
+|-------------|-------------------------------------------|-------------------------------------------------|
+| TreadWright | ✅ Done                                   | Shopify JSON API, blems + regular catalog        |
+| TireMart    | ✅ Done                                   | BigCommerce SSR, highest-value blem source       |
+| SimpleTire  | ✅ Written → moved to Phase 10            | Server returning 500s for this IP               |
+| JEGS        | Blocked — Cloudflare Turnstile            | Dedicated blem category; needs CF bypass infra  |
+| 4WheelParts | Blocked — Cloudflare Managed Challenge    | No blems; needs CF bypass infra                 |
+| Summit      | Blocked — Imperva Incapsula               | Blems intermittent; needs proxy infra           |
+| TireRack    | NO-GO — Akamai blocks everything          | Spec enrichment value; revisit if API available |
+| eBay        | NO-GO — complexity vs value               | Multi-seller; revisit if user demand is clear   |
 
-**Priority order for Phase 6 scrapers:**
-
-| Priority | Source      | Type         | Why                                             |
-|----------|-------------|--------------|------------------------------------------------ |
-| HIGH     | TireMart    | reseller     | 317+ blem SKUs + broader off-road catalog        |
-| HIGH     | SimpleTire  | aggregator   | Richest spec data, all brands, easy to scrape    |
-| HIGH     | TireRack    | aggregator   | Gold-standard specs + UTQG; heavy bot protection |
-| MEDIUM   | 4WheelParts | reseller     | Strong off-road focus, good brand mix, Cloudflare|
-| MEDIUM   | TreadWright | manufacturer | Blems + full catalog, Shopify (easy scrape)      |
-| MEDIUM   | JEGS        | reseller     | Dedicated blem category + broader tires          |
-| MEDIUM   | Summit      | reseller     | Good off-road selection, blems intermittent       |
-| LOW      | eBay        | marketplace  | Noisy, multi-seller, heavy bot protection        |
-
-_Original candidates (Mickey Thompson, Pro Comp, Maxxis, BFGoodrich,
-ExtremeTerrain) don't sell direct to consumer or have scrapeable inventory
-pages. Their tires are available through the aggregators/resellers above._
-
-### Research process for each candidate
-1. `curl -s <url> | grep -i "blem\|closeout\|clearance"` — check for relevant section
-2. If section exists, `curl -s <blem-url> | grep -c "sku\|part"` — confirm data is in HTML
-3. If JS-rendered, note it — scraper needs puppeteer instead of cheerio
-4. Check if login/account is required
-5. See the "Scraping etiquette" section below — do this before writing any scraper
+The remaining buildable scrapers (JEGS, 4WheelParts, Summit) are blocked on bot
+protection infrastructure (Cloudflare/Imperva bypass + residential proxies), not
+code. They're a separate infrastructure investment decision — see
+`docs/sources/go-no-go.md` for the full analysis. Build order if proxy infra
+is set up: JEGS → 4WheelParts → Summit.
 
 ### Scraping etiquette (required for every new scraper)
 Before adding any scraper, verify it won't get us IP-banned or violate ToS:
@@ -715,67 +705,61 @@ module.exports = {
 
 ---
 
-## Phase 10 — Discord Message Formatting Overhaul
+## Phase 10 — Plan Polish
+*Catchall phase for tasks that don't fit cleanly into earlier phases, or that
+were deferred due to external blockers. Pull items into earlier phases whenever
+they become relevant.*
 
-*Exact look is TBD — this phase is a placeholder for the end-of-project UX
-polish once the data model, history, and admin surfaces are all in place.*
+### Backlog
 
-### Why this comes last
-Every prior phase produces Discord messages with its own ad-hoc embed style:
-- Public feed alerts (Phase 1) — green/yellow/blurple per event type
-- /blems listings (Phase 2) — neutral dark-gray card rows
-- Subscription hits (Phase 3/4) — orange for pinned, blurple for broad,
-  grouped by event
-- /find results (Phase 7), /history + /stats (Phase 8), /admin (Phase 9) —
-  each will arrive with its own first-draft formatting
+#### SimpleTire scraper (deferred from Phase 6)
+- `src/scrapers/simpletire.js` is already written
+- Blocked: SimpleTire's server returns 500 errors for this IP
+- Resolution options: wait for the block to lift, retry from a different IP/network,
+  or use a proxy for this scraper only
+- Once unblocked: register in `src/scrapers/index.js` and verify output shape matches v2 model
+- Value: richest spec data of any accessible source (25+ fields, SimpleScore, reviews,
+  3PMS, weight, tread depth) — worth enabling when the IP issue is resolved
 
-By the time those are all shipped, there's enough surface area to look at
-holistically and decide what the bot should actually *feel* like.
-
-### Inputs to this phase
-- Real-world usage of phases 1–9 — which embeds are scannable vs noisy,
-  which commands users actually run, which numbers people squint at
-- The v2 data model from Phase 5 — what fields exist to show (images,
-  product URLs, load index, stock state vs raw qty, sale vs MSRP, etc.)
-- User-submitted wishes / screenshots / mockups collected during earlier
-  phases
-
-### Likely scope (not committed yet)
-- Unified color + emoji vocabulary across every command (today's events
-  all re-invent their own palette)
-- Product images in embeds when the scraper provides `image_url`
+#### Discord message / alert styling review
+The current alert embeds are functional but rough — they were built to ship, not
+to look good. Review once there's real usage to judge against:
+- **Alert embed layout** — the public feed messages show sku+size as field name and
+  brand/qty/price as field value. Worth revisiting: should source be shown? should
+  blems vs. standard inventory be visually distinct? is the truncation UX ("...and
+  X more, use /blems") the right call?
+- Unified color + emoji vocabulary across all commands
+- Product images in embeds when `image_url` is available
 - Clickable product links via `product_url`
-- A shared "tire card" component with consistent field order, so /blems,
-  /find, subscription hits, and /history all look like the same bot
-- Better density for list-heavy commands — fields vs. description-as-table
-  vs. plaintext blocks — to be decided after we see real content
+- Shared "tire card" component so /blems, /find, subscription hits, and /history
+  look consistent
 - Ephemeral vs. public defaults reviewed per command
-- Mobile-friendly check (most Discord use is on phones; long embeds
-  truncate badly)
+- Mobile-friendly check (long embeds truncate badly on phones)
 
-### Scope boundary
-Visual/UX only — no new commands, no new data, no new dispatch logic.
-If a formatting change needs a new data field, it goes back to Phase 5
-first.
+#### Proxy-protected scrapers (if infra investment made)
+JEGS, 4WheelParts, and Summit are all buildable but require Cloudflare/Imperva bypass
+infrastructure. See `docs/sources/go-no-go.md` for the full analysis and estimated
+effort per source.
 
 ---
 
 ## Build Order & Dependencies
 
 ```
-Phase 1  (Bot Foundation)    ← prerequisite for everything
-Phase 2  (Browse/Search)     ← depends on Phase 1; no schema changes
-Phase 3  (Subscriptions)     ← depends on Phase 1; adds users + subscriptions tables
-Phase 4  (Pinned watches)    ← merged into /subscribe; extends subscriptions
-Phase 5  (Data discovery)    ← docs only; unblocks 6/7/8 schema decisions
-Phase 6  (More scrapers)     ← depends on Phase 5 + robots/ToS clearance
-Phase 7  (Cross-site search) ← depends on Phase 6 (needs multiple scrapers to be useful)
-Phase 8  (History/Stats)     ← depends on Phase 5 (schema) + Phase 1
-Phase 9  (Admin)             ← depends on Phase 8 (scrape_runs needed for /admin runs)
-Phase 10 (Formatting polish) ← depends on 1–9 being shipped and in use
+Phase 1  (Bot Foundation)    ✅ Done
+Phase 2  (Browse/Search)     ✅ Done
+Phase 3  (Subscriptions)     ✅ Done
+Phase 4  (Pinned watches)    ✅ Done — merged into /subscribe
+Phase 5  (Data discovery)    ✅ Done — all source docs + unified model written
+Phase 6  (More scrapers)     ✅ Done (no-proxy sources) — TreadWright + TireMart live
+Phase 7  (Cross-site search) ← next; 2 live scrapers is enough to be useful
+Phase 8  (History/Stats)     ✅ Done — schema + /history + /stats commands
+Phase 9  (Admin)             ← next after Phase 7 (or in parallel, no hard dep)
+Phase 10 (Plan polish)       ← catchall; pull items earlier as needed
 ```
 
-Recommended order: 1 → 2 → 3 → 4 → **5** → 8 → 9 → 6 → 7 → 10
+Next up: Phase 7 (`/find` command) and Phase 9 (`/admin` commands) can be
+built in either order — no hard dependency between them.
 
 ---
 

@@ -104,6 +104,7 @@ const UPSERT_SQL = `
         is_active    = 1,
         last_seen_at = datetime('now'),
         notified_at  = NULL
+    RETURNING id
 `;
 
 /**
@@ -121,7 +122,7 @@ function upsertActiveTire(source, tire) {
     if (row.extra && typeof row.extra === 'object') {
         row.extra = JSON.stringify(row.extra);
     }
-    return getDb().prepare(UPSERT_SQL).run(row);
+    return getDb().prepare(UPSERT_SQL).get(row);
 }
 
 /**

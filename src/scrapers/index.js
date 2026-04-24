@@ -25,7 +25,6 @@ const tiremart   = require('./tiremart');
 // disabling simpleTire, their bot protection doesn't like when we spam the site several thousand times
 // const simpletire = require('./simpletire');
 
-const scrapers = [interco, treadwright, tiremart, simpletire];
+const scrapers = [interco, treadwright, tiremart];
 
 module.exports = scrapers;
-module.exports.simpletire = simpletire;
