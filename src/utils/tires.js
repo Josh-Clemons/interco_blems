@@ -38,4 +38,30 @@ function parsePrice(price) {
     return m ? parseFloat(m[1]) : null;
 }
 
-module.exports = { parseDiameter, parsePrice };
+/**
+ * Filters an array of tire objects against a freetext query and optional
+ * diameter. Used by scraper search() methods to apply user input client-side.
+ *
+ * @param {object[]} tires
+ * @param {string}   query  - matched against sku, title, brand, size (case-insensitive substring)
+ * @param {object}   [opts]
+ * @param {number}   [opts.size] - exact diameter in inches (uses parseDiameter)
+ * @returns {object[]}
+ */
+function filterSearchResults(tires, query, { size } = {}) {
+    const q = query ? query.toLowerCase() : null;
+    return tires.filter(tire => {
+        if (q) {
+            const haystack = [tire.sku, tire.title, tire.brand, tire.size]
+                .filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(q)) return false;
+        }
+        if (size != null) {
+            const diam = parseDiameter(tire.size);
+            if (diam == null || diam !== size) return false;
+        }
+        return true;
+    });
+}
+
+module.exports = { parseDiameter, parsePrice, filterSearchResults };

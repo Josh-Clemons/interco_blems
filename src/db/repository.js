@@ -2,6 +2,52 @@ const { getDb } = require('./client');
 const { parseDiameter, parsePrice } = require('../utils/tires');
 
 // ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/**
+ * Full-text search across sku, brand, title, and size fields.
+ * Returns active tires from all sources (blem and non-blem) whose text fields
+ * contain the query string. Results are sorted by source then sku.
+ *
+ * @param {string} query   - substring matched case-insensitively against sku/brand/title/size
+ * @param {object} [filters]
+ *   source  - limit to one source (optional)
+ *   size    - exact overall diameter in inches (optional, post-filter)
+ * @returns {object[]}
+ */
+function searchTires(query, filters = {}) {
+    const { source, size } = filters;
+
+    const clauses = ['is_active = 1'];
+    const params = [];
+
+    if (source) { clauses.push('source = ?'); params.push(source); }
+
+    const q = query; // instr() does substring match without wildcards
+    clauses.push(`(
+        instr(lower(sku),   lower(?)) > 0
+        OR instr(lower(brand),  lower(?)) > 0
+        OR instr(lower(title),  lower(?)) > 0
+        OR instr(lower(size),   lower(?)) > 0
+    )`);
+    params.push(q, q, q, q);
+
+    let rows = getDb()
+        .prepare(`SELECT * FROM tires WHERE ${clauses.join(' AND ')} ORDER BY source, brand, sku`)
+        .all(...params);
+
+    if (size != null) {
+        rows = rows.filter(r => {
+            const d = r.overall_diam || parseDiameter(r.size);
+            return d != null && d === size;
+        });
+    }
+
+    return rows;
+}
+
+// ---------------------------------------------------------------------------
 // Tire queries
 // ---------------------------------------------------------------------------
 
@@ -352,6 +398,7 @@ function getBotStats() {
 module.exports = {
     getTiresBySource,
     getActiveTires,
+    searchTires,
     getTireSources,
     upsertActiveTire,
     updateChangedTire,
