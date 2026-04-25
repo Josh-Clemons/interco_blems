@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "test": "jest --testPathPattern=test/"
+    "test": "jest --testPathPattern=test/",
+    "simple-tire": "node index.js --simple-tire"
   },
   "author": "",
   "license": "ISC",

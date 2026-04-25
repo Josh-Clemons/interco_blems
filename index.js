@@ -168,7 +168,7 @@ async function runSimpleTireFull() {
         while (running) await new Promise(r => setTimeout(r, 30_000));
     }
     running = true;
-    const simpletire = require('./src/scrapers').simpletire;
+    const simpletire = require('./src/scrapers/simpletire');
     const runId = repo.startScrapeRun(simpletire.name);
     try {
         log.info(`[nightly] Starting SimpleTire full crawl`);
@@ -283,4 +283,8 @@ async function main() {
     }
 }
 
-main();
+if (process.argv.includes('--simple-tire')) {
+    runSimpleTireFull().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });
+} else {
+    main();
+}
