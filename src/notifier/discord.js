@@ -12,6 +12,7 @@
  */
 
 const { getClient } = require('../bot/client');
+const { tireField } = require('../bot/embeds');
 const log = require('../logger');
 
 // Discord's total embed character limit per message is 6000.
@@ -20,12 +21,7 @@ const log = require('../logger');
 const MAX_TIRES_SHOWN = 20;
 
 function tireFields(tires) {
-    const shown = tires.slice(0, MAX_TIRES_SHOWN);
-    const fields = shown.map(t => ({
-        name: `${t.sku} — ${t.size || 'N/A'}`,
-        value: `${t.brand || 'N/A'} | Qty: ${t.quantity_raw ?? '?'} | Price: ${t.price_cents != null ? '$' + (t.price_cents / 100).toFixed(2) : 'N/A'}`,
-        inline: false,
-    }));
+    const fields = tires.slice(0, MAX_TIRES_SHOWN).map(tireField);
     if (tires.length > MAX_TIRES_SHOWN) {
         fields.push({
             name: `…and ${tires.length - MAX_TIRES_SHOWN} more`,

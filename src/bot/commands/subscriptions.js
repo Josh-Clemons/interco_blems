@@ -2,7 +2,7 @@
  * /subscriptions — lists the calling user's active subscriptions.
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const repo = require('../../db/repository');
 const { describeSub, describeEvents } = require('./subscribe');
 
@@ -17,7 +17,7 @@ module.exports = {
         if (subs.length === 0) {
             await interaction.reply({
                 content: 'You have no active subscriptions. Use `/subscribe` to create one.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -36,7 +36,7 @@ module.exports = {
                 color: 0x2B2D31,
                 footer: { text: 'Use /unsubscribe <id> to remove one. 📌 = pinned SKU watch.' },
             }],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

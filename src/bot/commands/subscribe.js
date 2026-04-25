@@ -11,7 +11,7 @@
  * (sku, brand, size, or size_min) to prevent firehose spam.
  */
 
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js');
 const repo = require('../../db/repository');
 const { hasNarrowingFilter } = require('../../subscriptions');
 
@@ -68,7 +68,7 @@ module.exports = {
                 content:
                     '❌ `track_changes` and `track_removed` require at least one narrowing filter — ' +
                     'add `sku`, `brand`, `size`, or `size_min` so you don\'t get alerted on every tire.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -88,7 +88,7 @@ module.exports = {
                 (dmFlag
                     ? '\n_Tip: DMs require you to allow messages from server members. If you don\'t get one, check your privacy settings._'
                     : ''),
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

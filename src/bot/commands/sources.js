@@ -2,7 +2,7 @@
  * /sources — lists all registered scrapers and their stats.
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const scrapers = require('../../scrapers');
 const { getTireSources } = require('../../db/repository');
 
@@ -41,7 +41,7 @@ module.exports = {
                 fields,
                 timestamp: new Date().toISOString(),
             }],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

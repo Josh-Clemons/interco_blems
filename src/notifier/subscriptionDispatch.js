@@ -11,6 +11,7 @@
  */
 
 const { getClient } = require('../bot/client');
+const { tireField } = require('../bot/embeds');
 
 const COLOR_PINNED = 0xE67E22; // orange
 const COLOR_BROAD  = 0x5865F2; // blurple
@@ -32,11 +33,7 @@ function groupByEvent(hits) {
 }
 
 function tireFields(tires) {
-    return tires.map(t => ({
-        name: `${t.sku} — ${t.size}`,
-        value: `**${t.brand || 'N/A'}**\nQty: ${t.quantity_raw ?? '?'}  |  Price: ${t.price_cents != null ? '$' + (t.price_cents / 100).toFixed(2) : 'N/A'}  |  \`${t.source}\``,
-        inline: false,
-    }));
+    return tires.map(tireField);
 }
 
 /**

@@ -12,23 +12,17 @@ const cheerio = require('cheerio');
 const NAME = 'tiremart';
 const URL = 'https://www.tiremart.com/blemished-tires/';
 
-// Size patterns: "37X13.50R24" or "255/65R18" possibly followed by ", 120Q" etc.
+// Matches standard tire size strings within a spec text like "305/70R16, 124/121Q, E (10 Ply)"
 const SIZE_RE = /(\d+[Xx/][\d.]+[Rr]\d+)/;
-const LOAD_SPEED_RE = /(\d+)([A-Z])/; // e.g. "120Q" → load_index=120, speed_rating=Q
-const LOAD_RANGE_RE = /Load Range:\s*([A-Z]+)\s*(?:\((\d+)\s*Ply\))?/i;
-const PRICE_RE = /\$?([\d,]+\.?\d*)/;
+// Matches load index + speed rating, e.g. ", 124/121Q" or ", 110V"
+const LOAD_SPEED_RE = /,\s*(\d+)(?:\/\d+)?([A-Z])\b/;
+// Matches load range + optional ply from spec text, e.g. "E (10 Ply)"
+const LOAD_RANGE_RE = /([A-Z])\s*\((\d+)\s*Ply\)/;
+const PRICE_RE = /\$?([\d,]+\.\d{2})/;
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Parse listing page cards for basic info,
- * then optionally fetch detail pages for full specs.
- */
 async function scrape() {
     const res = await fetch(URL, {
-        headers: { 'User-Agent': 'blem-tracker/1.0 (+tire-tracking-bot)' },
+        headers: { 'User-Agent': 'BlemBot/1.0 (+tire-tracking-bot)' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${URL}`);
 
@@ -37,113 +31,104 @@ async function scrape() {
 
     const tires = [];
 
-    // BigCommerce product cards — look for product listing items
-    const cards = $('.product, .productCard, [data-product-id], .listItem, article.product');
+    // BigCommerce listing: each product is a <li class="product"><article class="card" data-sku="...">
+    $('li.product article.card[data-sku]').each((_, card) => {
+        const $c = $(card);
 
-    // If no structured cards found, try a broader approach
-    const productElements = cards.length > 0 ? cards : $('[class*="product"]').filter((_, el) => {
-        return $(el).find('a[href*="/"]').length > 0 && $(el).find('[class*="price"]').length > 0;
-    });
+        // SKU from BigCommerce data attribute — reliable, stable identifier
+        const sku = $c.attr('data-sku');
 
-    productElements.each((_, card) => {
-        const $card = $(card);
+        // Product URL — already absolute
+        const productUrl = $c.find('h4.card-title a').attr('href') || null;
 
-        // Brand
-        const brand = $card.find('p').first().text().trim() ||
-                       $card.find('[class*="brand"]').text().trim() || null;
+        // Brand from the labeled data attribute; TireMart stores "BLEM" for some
+        // generic blem entries — treat those as unknown brand
+        const brandRaw = $c.find('p[data-test-info-type="brandName"]').text().trim();
+        const brand = (brandRaw && brandRaw !== 'BLEM') ? brandRaw : null;
 
-        // Model/title — usually in an h4 or heading link
-        const titleEl = $card.find('h4 a, h3 a, [class*="title"] a, [class*="name"] a').first();
-        const title = titleEl.text().trim() || $card.find('h4, h3').first().text().trim();
+        // Full model title — strip leading "BLEM " prefix TireMart sometimes adds
+        const titleRaw = $c.find('h4.card-title a').text().trim();
+        const title = titleRaw.replace(/^BLEM\s+/i, '').trim() || titleRaw;
 
-        // Product URL
-        const href = titleEl.attr('href') || $card.find('a[href]').first().attr('href');
-        const productUrl = href ? (href.startsWith('http') ? href : `https://www.tiremart.com${href}`) : null;
+        // Spec text: "305/70R16, 124/121Q, E (10 Ply)" from the misleadingly-named
+        // span.product-sku (BigCommerce uses that class for the spec line, not the SKU)
+        const specText = $c.find('span.product-sku').text().trim();
 
-        // Size string
-        const sizeText = $card.text();
-        const sizeMatch = SIZE_RE.exec(sizeText);
+        const sizeMatch = SIZE_RE.exec(specText);
         const size = sizeMatch ? sizeMatch[1] : null;
 
-        // Load/Speed from size line (e.g. "37X13.50R24, 120Q")
         let loadIndex = null;
         let speedRating = null;
-        const lsText = $card.find('[class*="size"], [class*="spec"]').text() || sizeText;
-        const lsMatch = lsText.match(/,\s*(\d+)([A-Z])\b/);
+        const lsMatch = LOAD_SPEED_RE.exec(specText);
         if (lsMatch) {
             loadIndex = parseInt(lsMatch[1], 10);
             speedRating = lsMatch[2];
         }
 
-        // Load range / ply
         let loadRange = null;
         let ply = null;
-        const lrMatch = LOAD_RANGE_RE.exec(sizeText);
+        const lrMatch = LOAD_RANGE_RE.exec(specText);
         if (lrMatch) {
             loadRange = lrMatch[1];
-            ply = lrMatch[2] ? parseInt(lrMatch[2], 10) : null;
+            ply = parseInt(lrMatch[2], 10);
         }
 
-        // Price
+        // Sale price (the actual purchase price)
         let priceCents = null;
-        let price = null;
-        const priceEl = $card.find('[class*="price"]:not([class*="retail"]):not([class*="was"])').first();
-        const priceText = priceEl.text() || '';
+        const priceText = $c.find('[data-product-price-without-tax]').text().trim();
         const priceMatch = PRICE_RE.exec(priceText);
         if (priceMatch) {
-            const dollars = parseFloat(priceMatch[1].replace(',', ''));
-            priceCents = Math.round(dollars * 100);
-            price = `$${dollars.toFixed(2)}`;
+            priceCents = Math.round(parseFloat(priceMatch[1].replace(',', '')) * 100);
         }
 
-        // MSRP / retail price
+        // MSRP / original price shown as strikethrough
         let msrpCents = null;
-        const retailEl = $card.find('[class*="retail"], [class*="was"], [class*="rrp"], s, del').first();
-        const retailMatch = PRICE_RE.exec(retailEl.text() || '');
-        if (retailMatch) {
-            msrpCents = Math.round(parseFloat(retailMatch[1].replace(',', '')) * 100);
+        const msrpText = $c.find('[data-product-rrp-price-without-tax]').text().trim();
+        const msrpMatch = PRICE_RE.exec(msrpText);
+        if (msrpMatch) {
+            msrpCents = Math.round(parseFloat(msrpMatch[1].replace(',', '')) * 100);
         }
 
-        // Stock
-        const stockText = $card.text();
+        // Stock: `.stock_level` shows human text; `data-current-stock` has the real count
+        const stockText = $c.find('.stock_level').text().trim();
+        const currentStockAttr = $c.find('[data-current-stock]').attr('data-current-stock');
+        const currentStock = currentStockAttr != null ? parseInt(currentStockAttr, 10) : NaN;
+
         let stockState = 'unknown';
         let quantityRaw = null;
-        const stockMatch = stockText.match(/In Stock\s*\((\d+\+?)\)/i);
-        if (stockMatch) {
-            quantityRaw = stockMatch[1];
-            stockState = 'in_stock';
+        let quantityN = null;
+
+        if (!isNaN(currentStock)) {
+            quantityN = currentStock;
+            quantityRaw = String(currentStock);
+            stockState = currentStock > 4 ? 'in_stock' : currentStock > 0 ? 'low_stock' : 'out_of_stock';
         } else if (/in\s*stock/i.test(stockText)) {
-            quantityRaw = 'in stock';
+            quantityRaw = stockText;
             stockState = 'in_stock';
         } else if (/out of stock/i.test(stockText)) {
             quantityRaw = 'out of stock';
             stockState = 'out_of_stock';
         }
 
-        // Category from performance text
+        // Category from performance icon alt text
         let category = null;
-        const perfText = sizeText.toLowerCase();
-        if (perfText.includes('mud terrain')) category = 'mud';
-        else if (perfText.includes('all terrain')) category = 'all-terrain';
-        else if (perfText.includes('extreme terrain')) category = 'extreme-terrain';
+        const perfAlt = $c.find('.Performance-Result img').attr('alt')?.toLowerCase() || '';
+        if (perfAlt.includes('mud terrain')) category = 'mud';
+        else if (perfAlt.includes('all terrain')) category = 'all-terrain';
+        else if (perfAlt.includes('extreme terrain')) category = 'extreme-terrain';
 
-        // SKU from URL slug (best we can do from listing page)
-        // Use the URL path as a stable identifier
-        const sku = href ? href.replace(/^\/|\/$/g, '') : null;
-
-        if (!sku || !title) return;
+        if (!sku || !size) return;
 
         tires.push({
             sku,
-            title: `${brand ? brand + ' ' : ''}${title}${title.includes('BLEM') ? '' : ' (BLEM)'}`,
-            brand: brand || null,
+            title,
+            brand,
             category,
             size,
-            is_blem: 1, // All products from /blemished-tires/ are blems
+            is_blem: 1,
             quantity_raw: quantityRaw,
-            quantity_n: quantityRaw && /^\d+$/.test(quantityRaw) ? parseInt(quantityRaw, 10) : null,
+            quantity_n: quantityN,
             stock_state: stockState,
-            price,
             price_cents: priceCents,
             msrp_cents: msrpCents,
             load_index: loadIndex,

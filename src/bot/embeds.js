@@ -12,11 +12,19 @@ const EMBED_COLOR = 0x2B2D31; // neutral dark-gray
 
 /**
  * Formats one tire as an embed field.
+ * Shows a [blem] badge, product link when available, and N/A for any missing values.
  */
 function tireField(tire) {
+    const blem  = tire.is_blem ? ' **[blem]**' : '';
+    const qty   = tire.quantity_raw ?? 'N/A';
+    const price = tire.price_cents != null ? `$${(tire.price_cents / 100).toFixed(2)}` : 'N/A';
+    const link  = tire.product_url ? ` · [view](${tire.product_url})` : '';
+
+    const source = tire.source ? `  |  Source: \`${tire.source}\`` : '';
+
     return {
-        name: `${tire.sku} — ${tire.size}`,
-        value: `**${tire.brand || 'N/A'}**\nQty: ${tire.quantity_raw ?? '?'}  |  Price: ${tire.price_cents != null ? '$' + (tire.price_cents / 100).toFixed(2) : 'N/A'}  |  Source: \`${tire.source}\``,
+        name: `${tire.sku} — ${tire.size}${blem}`,
+        value: `**${tire.brand || 'N/A'}**\nQty: ${qty}  |  Price: ${price}${source}${link}`,
         inline: false,
     };
 }

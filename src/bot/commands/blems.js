@@ -8,7 +8,7 @@
  *   /blems brand:bogger
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { getActiveTires } = require('../../db/repository');
 const { buildTireListEmbed, buildPaginationRow, PAGE_SIZE } = require('../embeds');
 
@@ -83,11 +83,12 @@ function renderPage(filters, filterKey, page) {
 
 function describeFilters(f) {
     const parts = [];
-    if (f.source)       parts.push(`source:${f.source}`);
-    if (f.brand)        parts.push(`brand:${f.brand}`);
-    if (f.sizeMin != null) parts.push(`≥${f.sizeMin}"`);
-    if (f.sizeMax != null) parts.push(`≤${f.sizeMax}"`);
-    if (f.priceMax != null) parts.push(`≤$${f.priceMax}`);
+    if (f.source)             parts.push(`source:${f.source}`);
+    if (f.brand)              parts.push(`brand:${f.brand}`);
+    if (f.sizeMin != null)    parts.push(`≥${f.sizeMin}"`);
+    if (f.sizeMax != null)    parts.push(`≤${f.sizeMax}"`);
+    if (f.priceMax != null)   parts.push(`≤$${f.priceMax}`);
+    if (f.includeOutOfStock)  parts.push('incl. out-of-stock');
     return parts.join(', ');
 }
 
@@ -99,15 +100,17 @@ module.exports = {
         .addStringOption(o => o.setName('brand').setDescription('Filter by brand (case-insensitive)'))
         .addIntegerOption(o => o.setName('size_min').setDescription('Minimum tire diameter in inches'))
         .addIntegerOption(o => o.setName('size_max').setDescription('Maximum tire diameter in inches'))
-        .addNumberOption(o => o.setName('price_max').setDescription('Maximum price in dollars')),
+        .addNumberOption(o => o.setName('price_max').setDescription('Maximum price in dollars'))
+        .addBooleanOption(o => o.setName('include_oos').setDescription('Include out-of-stock tires (hidden by default)')),
 
     async execute(interaction) {
         const filters = {
-            source:   interaction.options.getString('source') || undefined,
-            brand:    interaction.options.getString('brand')  || undefined,
-            sizeMin:  interaction.options.getInteger('size_min') ?? undefined,
-            sizeMax:  interaction.options.getInteger('size_max') ?? undefined,
-            priceMax: interaction.options.getNumber('price_max') ?? undefined,
+            source:            interaction.options.getString('source') || undefined,
+            brand:             interaction.options.getString('brand')  || undefined,
+            sizeMin:           interaction.options.getInteger('size_min') ?? undefined,
+            sizeMax:           interaction.options.getInteger('size_max') ?? undefined,
+            priceMax:          interaction.options.getNumber('price_max') ?? undefined,
+            includeOutOfStock: interaction.options.getBoolean('include_oos') ?? false,
         };
 
         const filterKey = cacheFilters(filters);
@@ -128,7 +131,7 @@ module.exports = {
         if (!filters) {
             await interaction.reply({
                 content: 'This listing has expired. Please run `/blems` again.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }

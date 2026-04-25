@@ -3,7 +3,7 @@
  * Confirms the bot is alive and reports WebSocket latency.
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -14,7 +14,7 @@ module.exports = {
         const latency = interaction.client.ws.ping;
         await interaction.reply({
             content: `Pong! WebSocket latency: ${latency}ms`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

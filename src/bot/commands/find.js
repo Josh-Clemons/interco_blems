@@ -11,10 +11,10 @@
  *   /find query:37x12.50R17 source:interco
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const scrapers = require('../../scrapers');
 const { searchTires } = require('../../db/repository');
-const { EMBED_COLOR } = require('../embeds');
+const { tireField, EMBED_COLOR } = require('../embeds');
 
 const MAX_PER_SOURCE = 10;
 
@@ -22,43 +22,25 @@ const MAX_PER_SOURCE = 10;
 // as scrapers are added.
 const SOURCE_CHOICES = scrapers.map(s => ({ name: s.name, value: s.name }));
 
-/**
- * Formats one tire as an embed field, including a blem badge and product link
- * when available. Designed for /find results where blems and standard tires
- * can appear together.
- */
-function findTireField(tire) {
-    const blem    = tire.is_blem ? ' **[blem]**' : '';
-    const price   = tire.price_cents != null ? `$${(tire.price_cents / 100).toFixed(2)}` : 'N/A';
-    const qty     = tire.quantity_raw ?? '?';
-    const link    = tire.product_url ? ` · [view](${tire.product_url})` : '';
-
-    return {
-        name: `${tire.sku} — ${tire.size}${blem}`,
-        value: `**${tire.brand || 'N/A'}**\nQty: ${qty}  |  Price: ${price}${link}`,
-        inline: false,
-    };
-}
-
-function buildSourceEmbed(source, tires, query) {
+function buildSourceEmbed(source, tires) {
     const total = tires.length;
     const shown = tires.slice(0, MAX_PER_SOURCE);
     const blemCount = tires.filter(t => t.is_blem).length;
 
     let subtitle = '';
     if (blemCount > 0 && blemCount < total) subtitle = `${blemCount} blem, ${total - blemCount} standard`;
-    else if (blemCount === total)           subtitle = 'all blem';
-    else                                    subtitle = 'all standard';
+    else if (blemCount === total)            subtitle = 'all blem';
+    else                                     subtitle = 'all standard';
 
     const overflow = total > MAX_PER_SOURCE
         ? `\nShowing ${MAX_PER_SOURCE} of ${total}. Use \`/blems source:${source}\` to browse all.`
-        : '';
+        : null;
 
     return {
         title: `${source} — ${total} result${total !== 1 ? 's' : ''} (${subtitle})`,
-        description: overflow || null,
+        description: overflow,
         color: EMBED_COLOR,
-        fields: shown.map(findTireField),
+        fields: shown.map(tireField),
         footer: { text: 'Data from last scheduled scrape' },
         timestamp: new Date().toISOString(),
     };
@@ -83,21 +65,27 @@ module.exports = {
             o.setName('source')
                 .setDescription('Limit to one data source')
                 .addChoices(...SOURCE_CHOICES)
+        )
+        .addBooleanOption(o =>
+            o.setName('include_oos')
+                .setDescription('Include out-of-stock tires (hidden by default)')
         ),
 
     async execute(interaction) {
-        const query  = interaction.options.getString('query');
-        const size   = interaction.options.getInteger('size') ?? undefined;
-        const source = interaction.options.getString('source') || undefined;
+        const query           = interaction.options.getString('query');
+        const size            = interaction.options.getInteger('size') ?? undefined;
+        const source          = interaction.options.getString('source') || undefined;
+        const includeOutOfStock = interaction.options.getBoolean('include_oos') ?? false;
 
-        const allResults = searchTires(query, { source, size });
+        const allResults = searchTires(query, { source, size, includeOutOfStock });
 
         if (allResults.length === 0) {
             const hints = [
                 `Try a shorter term — \`/find query:claw\` instead of a full size string.`,
                 `Use \`/blems\` to browse all available blem inventory without filtering.`,
-                size ? `The size filter requires an exact diameter match — try without \`size:${size}\` to broaden results.` : null,
+                size   ? `The size filter requires an exact diameter match — try without \`size:${size}\` to broaden results.` : null,
                 source ? `Try without \`source:${source}\` to search all sites.` : null,
+                !includeOutOfStock ? `Add \`include_oos:True\` to also see out-of-stock tires.` : null,
             ].filter(Boolean);
 
             await interaction.reply({
@@ -106,7 +94,7 @@ module.exports = {
                     description: hints.join('\n'),
                     color: 0x2B2D31,
                 }],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -120,7 +108,7 @@ module.exports = {
 
         const embeds = [];
         for (const [src, tires] of bySource) {
-            embeds.push(buildSourceEmbed(src, tires, query));
+            embeds.push(buildSourceEmbed(src, tires));
         }
 
         // Discord allows max 10 embeds per message

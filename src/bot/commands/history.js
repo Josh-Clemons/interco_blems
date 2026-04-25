@@ -6,7 +6,7 @@
  *   /history sku:ABC123 source:simpletire
  */
 
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getTireHistory } = require('../../db/repository');
 
 function formatEvent(row) {
@@ -48,7 +48,7 @@ module.exports = {
                     description: `No history found for SKU \`${sku}\`${source ? ` (source: ${source})` : ''}.`,
                     color: 0x2B2D31,
                 }],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }

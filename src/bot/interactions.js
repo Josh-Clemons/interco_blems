@@ -8,6 +8,7 @@
  * first underscore identifies which command owns the button.
  */
 
+const { MessageFlags } = require('discord.js');
 const { commands } = require('./commands');
 const log = require('../logger');
 
@@ -21,7 +22,7 @@ function attachInteractionHandler(client) {
             }
         } catch (err) {
             log.error('[bot] Interaction handler error:', err);
-            const reply = { content: 'Something went wrong.', ephemeral: true };
+            const reply = { content: 'Something went wrong.', flags: MessageFlags.Ephemeral };
             if (interaction.deferred || interaction.replied) {
                 await interaction.followUp(reply).catch(() => {});
             } else {
@@ -45,7 +46,7 @@ async function handleButton(interaction) {
     const command = commands.get(prefix);
     if (!command || typeof command.handleButton !== 'function') {
         log.warn(`[bot] No button handler for customId: ${interaction.customId}`);
-        await interaction.reply({ content: 'This button is no longer active.', ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: 'This button is no longer active.', flags: MessageFlags.Ephemeral }).catch(() => {});
         return;
     }
     await command.handleButton(interaction, interaction.customId);

@@ -12,17 +12,19 @@ const { parseDiameter, parsePrice } = require('../utils/tires');
  *
  * @param {string} query   - substring matched case-insensitively against sku/brand/title/size
  * @param {object} [filters]
- *   source  - limit to one source (optional)
- *   size    - exact overall diameter in inches (optional, post-filter)
+ *   source             - limit to one source (optional)
+ *   size               - exact overall diameter in inches (optional, post-filter)
+ *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  * @returns {object[]}
  */
 function searchTires(query, filters = {}) {
-    const { source, size } = filters;
+    const { source, size, includeOutOfStock = false } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
 
     if (source) { clauses.push('source = ?'); params.push(source); }
+    if (!includeOutOfStock) { clauses.push("stock_state != 'out_of_stock'"); }
 
     const q = query; // instr() does substring match without wildcards
     clauses.push(`(
@@ -63,17 +65,18 @@ function getTiresBySource(source) {
 /**
  * Returns active tires across all sources, optionally filtered.
  * @param {object} filters
- *   source    - exact source name match (optional)
- *   brand     - case-insensitive substring match (optional)
- *   sizeMin   - min overall diameter in inches (optional)
- *   sizeMax   - max overall diameter in inches (optional)
- *   priceMax  - max price in dollars (optional)
- *   isBlem    - true/false to filter by blem status (optional)
- *   category  - exact category match (optional)
- *   stockState - exact stock_state match (optional)
+ *   source             - exact source name match (optional)
+ *   brand              - case-insensitive substring match (optional)
+ *   sizeMin            - min overall diameter in inches (optional)
+ *   sizeMax            - max overall diameter in inches (optional)
+ *   priceMax           - max price in dollars (optional)
+ *   isBlem             - true/false to filter by blem status (optional)
+ *   category           - exact category match (optional)
+ *   stockState         - exact stock_state match (optional)
+ *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  */
 function getActiveTires(filters = {}) {
-    const { source, brand, sizeMin, sizeMax, priceMax, isBlem, category, stockState } = filters;
+    const { source, brand, sizeMin, sizeMax, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
@@ -83,6 +86,7 @@ function getActiveTires(filters = {}) {
     if (isBlem === false) { clauses.push('is_blem = 0'); }
     if (category) { clauses.push('category = ?'); params.push(category); }
     if (stockState) { clauses.push('stock_state = ?'); params.push(stockState); }
+    if (!includeOutOfStock) { clauses.push("stock_state != 'out_of_stock'"); }
     if (priceMax != null) { clauses.push('price_cents <= ?'); params.push(Math.round(priceMax * 100)); }
 
     let rows = getDb()

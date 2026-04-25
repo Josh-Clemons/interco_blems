@@ -6,7 +6,7 @@
  * subscription just returns false.
  */
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const repo = require('../../db/repository');
 
 module.exports = {
@@ -25,14 +25,14 @@ module.exports = {
         if (!ok) {
             await interaction.reply({
                 content: `❌ No active subscription **#${id}** found for you.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
 
         await interaction.reply({
             content: `🗑️ Subscription **#${id}** removed.`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };
