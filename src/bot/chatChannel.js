@@ -51,7 +51,7 @@ async function handleChatMessage(message) {
             await replyTarget.send({ embeds });
         } else {
             // Conversational reply from the LLM
-            await replyTarget.send(filters.reply || "What kind of tires are you looking for?");
+            await replyTarget.send(filters.reply || "I don't do small talk. What tires do you want?");
         }
     } catch (err) {
         log.error('[chatChannel] Error handling message:', err.message);

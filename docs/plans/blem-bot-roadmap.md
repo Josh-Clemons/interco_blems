@@ -1119,6 +1119,70 @@ effort per source.
 
 ---
 
+## Phase 16 — User Feedback
+*Let users rate search results and submit general feedback directly from Discord.*
+
+### Why
+Feedback closes the loop on Phase 12's NL search: knowing when results were unhelpful
+is the primary signal for improving the system prompt and query pipeline. General feedback
+also surfaces things users want that aren't on the roadmap yet.
+
+### Two feedback tracks
+
+**Track A — Inline result ratings**
+After every `/ask` response and chat channel search result, attach thumbs-up / thumbs-down
+buttons to the embed. One click records the rating against the query and result count.
+Low friction — no command to remember.
+
+**Track B — `/feedback` command**
+Freeform text feedback posted to a designated admin channel (`DISCORD_FEEDBACK_CHANNEL_ID`)
+and stored in the DB. Use for bug reports, feature requests, or anything that doesn't fit
+a thumbs up/down.
+
+### Schema additions
+```sql
+CREATE TABLE feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    type        TEXT NOT NULL,    -- 'rating' | 'general'
+    query       TEXT,             -- the search query, for rating entries
+    rating      INTEGER,          -- 1 (up) | -1 (down) | NULL for general
+    message     TEXT,             -- freeform text, for general entries
+    created_at  TEXT DEFAULT (datetime('now'))
+);
+```
+
+### Commands
+**`/feedback <message>`** — submit freeform feedback. Replies ephemerally to confirm.
+If `DISCORD_FEEDBACK_CHANNEL_ID` is set, also posts the feedback there so admins see it.
+
+### Inline rating UX
+- Thumbs-up / thumbs-down buttons appended to every `/ask` and chat channel result embed.
+- Clicking either button records the rating and updates the button row to show which was
+  selected (disabled state). One rating per user per query — a second click on the same
+  result is ignored.
+- Button custom ID encodes the feedback record ID so the handler is stateless:
+  `feedback_rate_<id>_<1|-1>`
+
+### New env var
+```
+DISCORD_FEEDBACK_CHANNEL_ID=   # channel where /feedback submissions are posted; omit to disable
+```
+
+### New files
+```
+src/
+  bot/
+    commands/
+      feedback.js    — /feedback slash command
+```
+
+### Schema boundary
+Feedback is write-only from the bot's perspective — no commands to browse or aggregate it.
+Raw data is in SQLite; analysis is out of scope (query it directly or export as needed).
+
+---
+
 ## Build Order & Dependencies
 
 ```
@@ -1139,9 +1203,10 @@ Phase 12  (NL search)              ⏳ Design locked — chat channel + /ask, Gi
 Phase 13  (Plan polish)            ⏳ Ongoing catchall
 Phase 14  (Scraper health)         ⏳ Open — fixture regression tests + live smoke script
 Phase 15  (Full catalog scraping)  ⏳ Open — expand interco + treadwright to non-blem inventory
+Phase 16  (Feedback)               ⏳ Open — inline result ratings + /feedback command
 ```
 
-Immediate next step: Phase 12 (NL search). After that: Phase 14 (scraper health tests), Phase 15 (full catalog expansion).
+Immediate next step: Phase 14 (scraper health tests) or Phase 16 (feedback). Phase 15 (full catalog expansion) after that.
 
 ---
 
@@ -1170,6 +1235,7 @@ src/
       stats.js
       admin.js
       ask.js           (Phase 12 — /ask slash command)
+      feedback.js      (Phase 16 — /feedback slash command)
   llm/
     client.js          (Phase 12 — OpenAI SDK → GitHub Copilot endpoint)
     parseQuery.js      (Phase 12 — NL string → structured filter JSON)
