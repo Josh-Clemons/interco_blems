@@ -8,6 +8,12 @@ jest.mock('../../src/llm/client', () => ({
 const { getLLMClient } = require('../../src/llm/client');
 const { parseQuery }   = require('../../src/llm/parseQuery');
 
+const NULL_FILTERS = {
+    intent: 'search', reply: null,
+    keyword: null, source: null, sizeMin: null, sizeMax: null,
+    rim: null, priceMax: null, isBlem: null, stockPref: null,
+};
+
 function mockLLMResponse(jsonObj) {
     getLLMClient.mockReturnValue({
         chat: {
@@ -31,43 +37,39 @@ function mockLLMFailure(err) {
 }
 
 // ---------------------------------------------------------------------------
-// Golden queries
+// Golden search queries
 // ---------------------------------------------------------------------------
 
 const GOLDEN_QUERIES = [
     {
         input:    'show me 37s under $500 for 17-inch rims',
-        expected: { keyword: null, sizeMin: 37, sizeMax: 37, rim: 17, priceMax: 500, isBlem: null, stockPref: null },
+        expected: { intent: 'search', keyword: null, sizeMin: 37, sizeMax: 37, rim: 17, priceMax: 500, isBlem: null, stockPref: null },
     },
     {
         input:    'bogger blems in stock',
-        expected: { keyword: 'bogger', isBlem: true, stockPref: null, sizeMin: null },
+        expected: { intent: 'search', keyword: 'bogger', isBlem: true, stockPref: null, sizeMin: null },
     },
     {
         input:    'treadwright 35 or bigger',
-        expected: { keyword: 'treadwright', sizeMin: 35, sizeMax: null },
+        expected: { intent: 'search', keyword: 'treadwright', sizeMin: 35, sizeMax: null },
     },
     {
         input:    'interco blems',
-        expected: { keyword: null, source: 'interco', isBlem: true },
+        expected: { intent: 'search', keyword: null, source: 'interco', isBlem: true },
     },
     {
         input:    'claw under 300',
-        expected: { keyword: 'claw', priceMax: 300 },
+        expected: { intent: 'search', keyword: 'claw', priceMax: 300 },
     },
     {
         input:    'all mud terrain tires including out of stock',
-        expected: { stockPref: 'any' },
+        expected: { intent: 'search', stockPref: 'any' },
     },
 ];
 
-describe('parseQuery — golden queries', () => {
+describe('parseQuery — golden search queries', () => {
     test.each(GOLDEN_QUERIES)('$input', async ({ input, expected }) => {
-        mockLLMResponse({
-            keyword: null, source: null, sizeMin: null, sizeMax: null,
-            rim: null, priceMax: null, isBlem: null, stockPref: null,
-            ...expected,
-        });
+        mockLLMResponse({ ...NULL_FILTERS, ...expected });
 
         const result = await parseQuery(input);
         expect(result.fallback).toBe(false);
@@ -75,6 +77,45 @@ describe('parseQuery — golden queries', () => {
         for (const [key, val] of Object.entries(expected)) {
             expect(result.filters[key]).toBe(val);
         }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Chat intent
+// ---------------------------------------------------------------------------
+
+describe('parseQuery — chat intent', () => {
+    test('returns intent:chat and a reply for a greeting', async () => {
+        mockLLMResponse({
+            ...NULL_FILTERS,
+            intent: 'chat',
+            reply: 'Hey! What kind of tires are you looking for?',
+        });
+
+        const result = await parseQuery('hi there');
+        expect(result.fallback).toBe(false);
+        expect(result.filters.intent).toBe('chat');
+        expect(typeof result.filters.reply).toBe('string');
+        expect(result.filters.reply.length).toBeGreaterThan(0);
+    });
+
+    test('chat intent has null filter fields', async () => {
+        mockLLMResponse({
+            intent: 'chat', reply: 'Hi! What size are you shopping for?',
+            keyword: null, source: null, sizeMin: null, sizeMax: null,
+            rim: null, priceMax: null, isBlem: null, stockPref: null,
+        });
+
+        const result = await parseQuery('hey');
+        expect(result.filters.keyword).toBeNull();
+        expect(result.filters.sizeMin).toBeNull();
+    });
+
+    test('returns fallback:true on invalid intent value', async () => {
+        mockLLMResponse({ ...NULL_FILTERS, intent: 'unknown' });
+
+        const result = await parseQuery('hi');
+        expect(result.fallback).toBe(true);
     });
 });
 
@@ -133,8 +174,9 @@ describe('parseQuery — fallback', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseQuery — valid response shape', () => {
-    test('returns all expected keys', async () => {
+    test('search response contains all expected keys', async () => {
         const full = {
+            intent: 'search', reply: null,
             keyword: 'bogger', source: 'interco', sizeMin: 37, sizeMax: 37,
             rim: 17, priceMax: 500, isBlem: true, stockPref: 'in_stock',
         };
@@ -145,15 +187,11 @@ describe('parseQuery — valid response shape', () => {
         expect(result.filters).toEqual(full);
     });
 
-    test('null values are preserved', async () => {
-        const nulls = {
-            keyword: null, source: null, sizeMin: null, sizeMax: null,
-            rim: null, priceMax: null, isBlem: null, stockPref: null,
-        };
-        mockLLMResponse(nulls);
+    test('null filter values are preserved', async () => {
+        mockLLMResponse(NULL_FILTERS);
 
         const result = await parseQuery('show me tires');
         expect(result.fallback).toBe(false);
-        expect(result.filters).toEqual(nulls);
+        expect(result.filters).toEqual(NULL_FILTERS);
     });
 });

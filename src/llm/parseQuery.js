@@ -3,11 +3,13 @@ const log = require('../logger');
 
 const MODEL = process.env.GITHUB_MODELS_MODEL || 'gpt-4o-mini';
 
-const SYSTEM_PROMPT = `You are a tire search assistant for a Discord bot that tracks off-road tire inventory.
+const SYSTEM_PROMPT = `You are a friendly assistant for a Discord bot that tracks off-road tire inventory (blemished and standard tires).
 
-Extract search filters from the user's message and return ONLY a JSON object with this exact structure — no prose, no explanation:
+Classify the user's message and return ONLY a JSON object — no prose, no explanation:
 
 {
+  "intent":    "search" | "chat",
+  "reply":     string | null,
   "keyword":   string | null,
   "source":    string | null,
   "sizeMin":   number | null,
@@ -18,16 +20,22 @@ Extract search filters from the user's message and return ONLY a JSON object wit
   "stockPref": "in_stock" | "any" | null
 }
 
-Field rules:
-- keyword: brand or model name for text search (e.g. "bogger", "claw", "wrangler"). Null if purely numeric filters.
-- source: one of "interco", "treadwright", "tiremart", "simpletire". Null if not specified.
-- sizeMin / sizeMax: overall tire diameter in inches. If user says "37s" or "37 inch", set both to 37. If "37 or bigger", set sizeMin:37, sizeMax:null.
-- rim: exact wheel/rim diameter in inches (e.g. 17 from "17-inch rims").
-- priceMax: max price in dollars (e.g. 500 from "under $500").
-- isBlem: true if user asks for "blems" or "blemished", false if explicitly "standard" or "non-blem", null if not mentioned.
-- stockPref: "any" if user says "include out of stock" or "all". Default null (bot will exclude out-of-stock by default).
+Intent rules:
+- "search": the user is looking for tires (mentions size, brand, price, rim, blems, source, or similar).
+  Set all applicable filter fields. Set reply to null.
+- "chat": the user is greeting, asking a general question, or saying something unrelated to searching.
+  Set reply to a short, friendly response that nudges them toward searching. Set all filter fields to null.
 
-Return null for any filter the user did not mention.`;
+Filter rules (search intent only):
+- keyword: brand or model name (e.g. "bogger", "claw"). Null if purely numeric filters.
+- source: one of "interco", "treadwright", "tiremart", "simpletire". Null if not specified.
+- sizeMin / sizeMax: overall diameter in inches. "37s" or "37 inch" → both 37. "37 or bigger" → sizeMin:37, sizeMax:null.
+- rim: exact wheel diameter in inches (e.g. 17 from "17-inch rims").
+- priceMax: max price in dollars (e.g. 500 from "under $500").
+- isBlem: true for "blems"/"blemished", false for "standard"/"non-blem", null if not mentioned.
+- stockPref: "any" if user says "include out of stock". Null otherwise.
+
+Return null for any filter not mentioned.`;
 
 /**
  * Parses a natural language query into structured tire search filters.
@@ -55,9 +63,12 @@ async function parseQuery(text) {
 
         const parsed = JSON.parse(raw);
 
-        const required = ['keyword', 'source', 'sizeMin', 'sizeMax', 'rim', 'priceMax', 'isBlem', 'stockPref'];
+        const required = ['intent', 'reply', 'keyword', 'source', 'sizeMin', 'sizeMax', 'rim', 'priceMax', 'isBlem', 'stockPref'];
         for (const key of required) {
             if (!(key in parsed)) throw new Error(`Missing key in LLM response: ${key}`);
+        }
+        if (parsed.intent !== 'search' && parsed.intent !== 'chat') {
+            throw new Error(`Unexpected intent value: ${parsed.intent}`);
         }
 
         return { filters: parsed, fallback: false };

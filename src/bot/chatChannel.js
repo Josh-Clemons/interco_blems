@@ -10,6 +10,7 @@
  */
 
 const log = require('../logger');
+const { parseQuery } = require('../llm/parseQuery');
 const { executeQuery, buildResultEmbeds } = require('./commands/ask');
 
 const CHAT_CHANNEL_ID = process.env.DISCORD_CHAT_CHANNEL_ID;
@@ -28,25 +29,29 @@ async function handleChatMessage(message) {
     try {
         await message.channel.sendTyping();
 
-        const { results, fallback } = await executeQuery(queryText);
-        const embeds = buildResultEmbeds(results, queryText, fallback);
+        const { filters, fallback } = await parseQuery(queryText);
+        const isSearch = fallback || filters?.intent === 'search';
 
+        // Determine reply target — open a thread if we're in the root channel
+        let replyTarget = message.channel;
         if (inRootChannel) {
-            // Open a thread off this message so the conversation is isolated + visible
-            let thread;
             try {
-                thread = await message.startThread({
+                replyTarget = await message.startThread({
                     name:                queryText.slice(0, 100),
                     autoArchiveDuration: 60,
                 });
             } catch (err) {
                 log.warn(`[chatChannel] Could not start thread: ${err.message} — replying in channel`);
-                thread = message.channel;
             }
-            await thread.send({ embeds });
+        }
+
+        if (isSearch) {
+            const { results } = await executeQuery(queryText);
+            const embeds = buildResultEmbeds(results, queryText, fallback);
+            await replyTarget.send({ embeds });
         } else {
-            // Already in a thread — just reply there
-            await message.channel.send({ embeds });
+            // Conversational reply from the LLM
+            await replyTarget.send(filters.reply || "What kind of tires are you looking for?");
         }
     } catch (err) {
         log.error('[chatChannel] Error handling message:', err.message);
