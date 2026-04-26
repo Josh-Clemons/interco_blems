@@ -383,10 +383,28 @@ function finishScrapeRun(runId, stats) {
     `).run({ id: runId, ...stats });
 }
 
-function getRecentRuns(limit = 20) {
+function getRecentRuns(limit = 20, source = null) {
     return getDb().prepare(`
-        SELECT * FROM scrape_runs ORDER BY started_at DESC LIMIT ?
-    `).all(limit);
+        SELECT * FROM scrape_runs
+        WHERE (? IS NULL OR source = ?)
+        ORDER BY started_at DESC LIMIT ?
+    `).all(source, source, limit);
+}
+
+function getLastRunPerSource() {
+    return getDb().prepare(`
+        SELECT * FROM scrape_runs
+        WHERE id IN (SELECT MAX(id) FROM scrape_runs GROUP BY source)
+    `).all();
+}
+
+function getErrorRuns(days = 7) {
+    return getDb().prepare(`
+        SELECT * FROM scrape_runs
+        WHERE error IS NOT NULL
+          AND started_at >= datetime('now', '-' || ? || ' days')
+        ORDER BY started_at DESC
+    `).all(days);
 }
 
 function getBotStats() {
@@ -445,5 +463,7 @@ module.exports = {
     startScrapeRun,
     finishScrapeRun,
     getRecentRuns,
+    getLastRunPerSource,
+    getErrorRuns,
     getBotStats,
 };

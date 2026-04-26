@@ -20,11 +20,12 @@ const subscribe = require('./subscribe');
 const subscriptions = require('./subscriptions');
 const unsubscribe = require('./unsubscribe');
 const history = require('./history');
-const stats = require('./stats');
+const stats   = require('./stats');
+const admin   = require('./admin');
 const log = require('../../logger');
 
 // Registry — add new commands to this array as they're built in later phases.
-const COMMAND_MODULES = [ping, blems, find, sources, subscribe, subscriptions, unsubscribe, history, stats];
+const COMMAND_MODULES = [ping, blems, find, sources, subscribe, subscriptions, unsubscribe, history, stats, admin];
 
 const commands = new Map();
 for (const mod of COMMAND_MODULES) {

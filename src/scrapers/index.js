@@ -22,9 +22,10 @@
 const interco    = require('./interco');
 const treadwright = require('./treadwright');
 const tiremart   = require('./tiremart');
-// disabling simpleTire, their bot protection doesn't like when we spam the site several thousand times
-// const simpletire = require('./simpletire');
+const simpletire = require('./simpletire');
 
-const scrapers = [interco, treadwright, tiremart];
+// scrapers flagged nightly:true are excluded from the regular runAll schedule
+// but included here so /sources and /admin sources can display them
+const scrapers = [interco, treadwright, tiremart, simpletire];
 
 module.exports = scrapers;

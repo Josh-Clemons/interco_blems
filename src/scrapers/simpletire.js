@@ -467,4 +467,4 @@ async function scrape({ full = false } = {}) {
     return tires;
 }
 
-module.exports = { name: NAME, url: URL, scrape };
+module.exports = { name: NAME, url: URL, scrape, nightly: true };
