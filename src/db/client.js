@@ -27,7 +27,7 @@ function getDb() {
         { name: 'size',            ddl: "ADD COLUMN size TEXT" },
         { name: 'notify_changed',  ddl: "ADD COLUMN notify_changed INTEGER NOT NULL DEFAULT 0" },
         { name: 'notify_removed',  ddl: "ADD COLUMN notify_removed INTEGER NOT NULL DEFAULT 0" },
-        { name: 'rim_min',         ddl: "ADD COLUMN rim_min INTEGER" },
+        { name: 'rim',             ddl: "ADD COLUMN rim INTEGER" },
     ]);
 
 

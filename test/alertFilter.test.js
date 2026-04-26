@@ -1,6 +1,15 @@
 const { filterForPublicAlert, hasPublicAlerts } = require('../src/alertFilter');
 
-const tire = (sku, size) => ({ sku, size, brand: 'B', quantity: '4', price: '$100' });
+const tire = (sku, size, over = {}) => ({
+    sku,
+    size,
+    brand: 'B',
+    quantity: '4',
+    quantity_n: 4,
+    stock_state: 'in_stock',
+    price: '$100',
+    ...over,
+});
 
 afterEach(() => {
     delete process.env.PUBLIC_ALERT_MIN_DIAMETER;
@@ -49,6 +58,29 @@ describe('filterForPublicAlert()', () => {
         };
         const r = filterForPublicAlert(d);
         expect(r.added.map(t => t.sku)).toEqual(['B']);
+    });
+
+    test('suppresses unavailable/out-of-stock tires from public alerts', () => {
+        const d = {
+            added: [
+                tire('A', '37x12.5R17', { stock_state: 'out_of_stock' }),
+                tire('B', '37x12.5R17', { quantity_n: 0 }),
+                tire('C', '37x12.5R17', { quantity_raw: 'Unavailable' }),
+                tire('D', '37x12.5R17', { quantity: 'Out of Stock' }),
+                tire('E', '37x12.5R17', { stock_state: 'low_stock' }),
+            ],
+            reactivated: [
+                tire('F', '40x13.5R17', { stock_state: 'out_of_stock' }),
+                tire('G', '40x13.5R17', { stock_state: 'in_stock' }),
+            ],
+            changed: [],
+            removed: [],
+            unchanged: [],
+        };
+
+        const r = filterForPublicAlert(d);
+        expect(r.added.map(t => t.sku)).toEqual(['E']);
+        expect(r.reactivated.map(t => t.sku)).toEqual(['G']);
     });
 });
 

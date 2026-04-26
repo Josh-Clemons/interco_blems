@@ -1,22 +1,27 @@
 # Blem Bot - Full Discord Bot Roadmap
 
-**Goal:** Evolve the current background scraper into a full-featured Discord bot that
-alerts on new blemish tires, lets users customize their own subscriptions and watchlists,
-and searches inventory across multiple manufacturer sites.
+**Goal:** Evolve the current scraper into a full-featured Discord bot that alerts on new
+blem tires, lets users define targeted subscriptions (including pinned-SKU watches), and
+supports cross-source tire discovery.
 
-**Current state:**
-- Node.js background process, cron-scheduled
-- Scrapes intercotire.com/blem-list (35"+ tires)
-- SQLite DB: `tires`, `email_log` tables
-- Notifies via email (nodemailer) and Discord webhook (one-way)
-- Scraper plugin pattern ready for additional sites
+**Current state (implemented):**
+- Discord.js bot is the long-running process + scheduler host
+- Active scheduled scrapers: `interco`, `treadwright`, `tiremart`
+- `simpletire` scraper exists with a nightly full-crawl path, but remains unstable from current IP
+- SQLite v2 model in production: `tires`, `email_log`, `users`, `subscriptions`, `tire_history`, `scrape_runs`
+- Public alert feed + per-user subscription fan-out both active
+- Live slash commands: `/ping`, `/blems`, `/find`, `/sources`, `/subscribe`, `/subscriptions`, `/unsubscribe`, `/history`, `/stats`
 
 **Architecture going forward:**
-- The Discord.js client becomes the long-running process
-- Cron job runs inside the bot process (same as today, just owned by the bot)
-- Slash commands give users real-time access to data
-- Per-user subscriptions and watchlists stored in SQLite
-- Each new scraper = one new file in `src/scrapers/`
+- Keep Discord client as the persistent process (PM2/supervisor required)
+- Continue scheduled inventory ingestion + diff tracking in-process
+- Keep the unified subscription model (broad filters + pinned watch behavior in one table)
+- Keep `/find` as backend DB search (no live-site scraping in command handlers)
+- Standardize rim filtering to exact rim size matching (not min/max ranges)
+- Enforce alert eligibility so out-of-stock/unavailable tires do not trigger blem alerts
+- Add admin control surface (`/admin` subcommands)
+- Add documentation and NL-search phases (README + LLM-assisted search)
+- Add additional protected scrapers only if proxy/bypass infra is approved
 
 **Alert routing model (applies across all phases):**
 - `DISCORD_ALERT_CHANNEL_ID` is the default public feed — always receives every
@@ -55,14 +60,14 @@ src/
       index.js       <- command registry (loads all commands, registers with Discord API)
       ping.js        <- /ping — health check, confirms bot is alive
       blems.js       <- /blems — list / filter stored blem tires (Phase 2)
-      find.js        <- /find — live cross-site catalog search (Phase 6)
-      subscribe.js   <- /subscribe (Phase 3)
+      find.js        <- /find — backend DB search across scraped inventory (Phase 7)
+      sources.js     <- /sources — scraper registry + source-level counts
+      subscribe.js   <- /subscribe (Phase 3/4 unified model)
       unsubscribe.js <- /unsubscribe (Phase 3)
       subscriptions.js <- /subscriptions (Phase 3)
-      watch.js       <- /watch (Phase 4)
-      unwatch.js     <- /unwatch (Phase 4)
-      watchlist.js   <- /watchlist (Phase 4)
-      admin.js       <- /admin (Phase 8)
+      history.js     <- /history (Phase 8)
+      stats.js       <- /stats (Phase 8)
+      admin.js       <- /admin (planned, Phase 10)
     interactions.js  <- routes incoming interactions to the right command handler
     embeds.js        <- shared embed builder helpers (tire cards, paginated lists)
 ```
@@ -122,8 +127,8 @@ client.login(process.env.DISCORD_BOT_TOKEN);
 ```
 
 Note: originally had a separate `/search` command, but consolidated into `/blems`
-with optional filter args. Live cross-site catalog search gets its own distinct
-command `/find` in Phase 6.
+with optional filter args. `/find` remains a cross-source DB search against stored
+inventory (by design — scheduled scrapes keep the dataset current).
 
 ### Embed design (shared in `src/bot/embeds.js`)
 Each tire card shows:
@@ -257,6 +262,11 @@ pinned SKU, blurple+🔔 otherwise.
 
 ### Commands
 
+Phase 4 is implemented through `/subscribe` extensions (no separate `/watch` command
+family). The legacy `/watch`, `/watchlist`, `/unwatch` command sketch below is retained
+as historical context only and should not be implemented unless the unified model is
+explicitly revisited.
+
 ```
 /watch <sku> [source]
   Watch a specific tire SKU. Notified immediately on any change: reappears,
@@ -274,41 +284,13 @@ pinned SKU, blurple+🔔 otherwise.
   Removes a watch entry.
 ```
 
-### How watchlist differs from subscriptions
-- Subscriptions: filter on new/reactivated tires at alert time
-- Watchlist: monitors specific SKUs for ANY change (qty, price, removal, return)
-  - Think of subscriptions as a broadcast filter, watchlist as individual tracking
+### Implementation reality
+- No separate `watchlist` table exists in the current codebase.
+- Watch behavior is represented in `subscriptions` via `sku` + `notify_changed` + `notify_removed`.
+- Dispatcher fan-out over `added/reactivated/changed/removed` is already implemented in `src/subscriptions.js`.
+- Orange pinned styling for SKU-focused hits is implemented in `src/notifier/subscriptionDispatch.js`.
 
-### Dispatcher changes required (not just data layer)
-The Phase 3 dispatcher only considers `added` + `reactivated` tires. Phase 4 must
-extend it to also walk the `changed` and `removed` sets from the tracker diff and
-check each one against every active watchlist entry. Order of operations per scrape:
-
-1. Public feed post (Phase 1 behavior, unchanged)
-2. Subscription fan-out over added + reactivated (Phase 3 behavior, unchanged)
-3. **NEW: Watchlist fan-out** over added + reactivated + changed + removed —
-   watchers get notified of every event affecting their tracked SKU / brand+size,
-   including when it goes away.
-4. Per-user de-dupe across subscription and watchlist hits (one message per tire per user)
-
-### New schema
-```sql
-CREATE TABLE watchlist (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id     TEXT NOT NULL REFERENCES users(id),
-    source      TEXT,    -- NULL = any source
-    sku         TEXT,    -- specific SKU; NULL if watching by brand+size
-    brand       TEXT,    -- used when sku is NULL
-    size        TEXT,    -- used when sku is NULL (exact or partial match)
-    active      INTEGER DEFAULT 1,
-    created_at  TEXT DEFAULT (datetime('now'))
-);
-```
-
-### Alert content for watchlist hits
-Watchlist alerts get a different embed style (e.g. orange border, bell emoji prefix)
-to visually distinguish "you asked to be notified about THIS tire specifically" from
-a general subscription alert.
+(Older watchlist-table design was superseded by this unified model.)
 
 ---
 
@@ -330,10 +312,10 @@ on the plan assumes a **unified model** across sources:
 
 - Phase 3/4 filter subscriptions by brand, size, price, sku — fields must
   mean the same thing regardless of origin.
-- Phase 6 (`/find`) compares live catalog results across sites side-by-side.
-- Phase 7 (`/history`, `/stats`) aggregates events by source and computes
+- Phase 7 keeps `/find` as backend DB search over scraped inventory for cross-source comparison.
+- Phase 8 (`/history`, `/stats`) aggregates events by source and computes
   cross-source trends.
-- Phase 8 (`/admin sources`) reports per-source health and coverage.
+- Phase 10 (`/admin sources`) reports per-source health and coverage.
 
 If source B uses load-rating terms interco doesn't, or source C lists prices
 in a range, or source D only exposes partial SKUs, the existing schema will
@@ -496,7 +478,7 @@ Register in `src/scrapers/index.js`. That's the entire integration.
 |-------------|-------------------------------------------|-------------------------------------------------|
 | TreadWright | ✅ Done                                   | Shopify JSON API, blems + regular catalog        |
 | TireMart    | ✅ Done                                   | BigCommerce SSR, highest-value blem source       |
-| SimpleTire  | ✅ Written → moved to Phase 10            | Server returning 500s for this IP               |
+| SimpleTire  | ✅ Written → moved to Phase 12            | Server returning 500s for this IP               |
 | JEGS        | Blocked — Cloudflare Turnstile            | Dedicated blem category; needs CF bypass infra  |
 | 4WheelParts | Blocked — Cloudflare Managed Challenge    | No blems; needs CF bypass infra                 |
 | Summit      | Blocked — Imperva Incapsula               | Blems intermittent; needs proxy infra           |
@@ -556,8 +538,8 @@ added as an optional dependency and only loaded by scrapers that need it.
 
 ---
 
-## Rim Size Filtering ← **NEXT**
-*Let users filter by wheel/rim diameter across `/blems`, `/find`, and subscriptions.*
+## Rim Size Filtering ✅ DONE
+*Users can now filter by exact wheel/rim diameter where needed; rim range filtering is deprecated.*
 
 ### Why
 Wheel diameter is a hard constraint — a 16" rim can't use a 17" tire. Searching
@@ -585,26 +567,24 @@ all 35" tires that fit a 17" rim."
    from the size string if the scraper doesn't provide it — same pattern as
    `overall_diam` derivation added in the sizing bugfix.
 
-4. `getActiveTires` gains `rimMin` / `rimMax` post-filter parameters.
-
-5. `searchTires` gains `rim` exact-match parameter (integer comparison using
-   `Math.round(d) === rim`, mirroring the `size` filter).
+4. Use exact rim filtering semantics across the app:
+   - `searchTires(query, { rim })` uses rounded exact match (`Math.round(d) === rim`)
+   - `getActiveTires(filters)` uses `rim` exact match (no range variants)
 
 **Commands**
 
-6. `/blems` — add `rim_min` and `rim_max` integer options.
+5. `/find` supports `rim` (exact integer rim diameter).
 
-7. `/find` — add `rim` integer option (exact rim diameter).
+6. `/blems` supports a single `rim` option (exact), with no `rim_min`/`rim_max`.
 
-8. `/subscribe` — add `rim_min` integer option to subscription criteria.
+7. `/subscribe` supports a single `rim` option (exact), with no `rim_min`.
 
 **Subscriptions**
 
-9. Add `rim_min` column to `subscriptions` table (nullable integer, migration in
-   `src/db/client.js`).
+8. Subscription matching uses exact rim (`sub.rim`) against
+   `tire.rim_diam ?? parseRimDiam(tire.size)`, with rounded comparison.
 
-10. `tireMatchesSubscription` in `src/subscriptions.js` checks `rim_min` against
-    `tire.rim_diam ?? parseRimDiam(tire.size)`.
+9. `hasNarrowingFilter` treats exact `rim` as a narrowing filter.
 
 ### Schema additions
 ```sql
@@ -612,16 +592,16 @@ all 35" tires that fit a 17" rim."
 ALTER TABLE tires ADD COLUMN rim_diam REAL;
 CREATE INDEX idx_tires_rim_diam ON tires(rim_diam);
 
--- subscriptions table (migration)
-ALTER TABLE subscriptions ADD COLUMN rim_min INTEGER;
+-- subscriptions table (exact rim)
+ALTER TABLE subscriptions ADD COLUMN rim INTEGER;
 ```
 
 ### No new commands — all changes extend existing ones.
 
 ---
 
-## Phase 7 — Cross-Site Inventory Search
-*Search for a tire model or size across every source simultaneously, not just blems.*
+## Phase 7 — Cross-Site Inventory Search (backend DB search)
+*Use the regularly scraped/stored dataset for cross-source search; no live-site fetches in `/find`.*
 
 ### New concept: full inventory scrapers
 Current scrapers only hit the blem/closeout page. For cross-site search, we need
@@ -633,57 +613,32 @@ Two scraper types:
 
 ### Command
 ```
-/find <query> [size] [source]
+/find <query> [size] [rim] [source]
   "query" is freetext: brand name, model name, part number
-  "size" is a diameter filter (integer)
+  "size" is an overall diameter filter (integer)
+  "rim" is exact rim diameter (integer)
   "source" limits to one site
 
-  Triggers live scrape of search results pages across all sources.
+  Uses backend DB search over regularly scraped data.
   Returns up to 10 results per source as embeds, grouped by source.
   Clearly marks which results are blem vs regular inventory.
 ```
 
 ### Architecture
-```js
-// src/scrapers/interco.js gets a second export:
-module.exports = {
-    name: 'interco',
-    url: '...',
-    scrape: async () => [...],           // blem page scraper (existing)
-    search: async (query, filters) => [] // catalog search scraper (new, optional)
-};
-```
-The `/find` command calls `scraper.search()` if it exists, skips if not.
-Results are never stored — they're live and displayed inline.
+`/find` uses `searchTires()` against the local SQLite store that is refreshed by
+scheduled scrapes. This keeps command latency low, avoids live-site fragility, and
+fits the operational model for this bot.
 
-### Discord interaction timing (critical)
-Discord requires an interaction response within **3 seconds**. Live multi-site
-scrapes will easily exceed that. The `/find` command handler must:
-
-1. Call `interaction.deferReply()` immediately on receipt — this gives us up to
-   15 minutes to follow up.
-2. Scrape sites in parallel via `Promise.allSettled` with a per-site timeout
-   (e.g. 10 seconds) so one slow site doesn't stall the whole response.
-3. Use `interaction.editReply()` to post results once all scrapers settle
-   (or time out). Sites that timed out are shown as "timeout" in the response
-   grouping, not silently dropped.
-4. Log per-site latency for debugging.
-
-```js
-// sketch
-await interaction.deferReply();
-const results = await Promise.allSettled(
-    scrapers.filter(s => s.search).map(s =>
-        withTimeout(s.search(query, filters), 10_000).then(r => ({ source: s.name, r }))
-    )
-);
-await interaction.editReply({ embeds: buildFindEmbeds(results) });
-```
+Implementation emphasis for this phase:
+- improve ranking/relevance over DB-backed results
+- maintain source grouping and blem/non-blem labeling in embeds
+- support exact rim filtering (`rim`) consistently
+- keep include/exclude out-of-stock behavior explicit and test-covered
 
 ---
 
-## Phase 8 — Price History & Trends
-*Surface the change history the DB is already accumulating.*
+## Phase 8 — Price History & Trends ✅
+*Implemented: history/stat visibility over tracked change events and scrape runs.*
 
 ### Commands
 ```
@@ -699,17 +654,19 @@ await interaction.editReply({ embeds: buildFindEmbeds(results) });
   - Last scrape time per source
 ```
 
-### Schema additions (Phase 7)
+### Schema additions (implemented)
 ```sql
 -- Explicit change log (supplement to last_seen_at / updated fields)
 CREATE TABLE tire_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     tire_id     INTEGER NOT NULL REFERENCES tires(id),
-    event       TEXT NOT NULL,   -- 'added' | 'removed' | 'returned' | 'price_change' | 'qty_change'
-    old_qty     TEXT,
-    new_qty     TEXT,
-    old_price   TEXT,
-    new_price   TEXT,
+    event       TEXT NOT NULL,   -- added | removed | returned | changed
+    old_price_cents INTEGER,
+    new_price_cents INTEGER,
+    old_quantity_n  INTEGER,
+    new_quantity_n  INTEGER,
+    old_stock_state TEXT,
+    new_stock_state TEXT,
     recorded_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -721,6 +678,7 @@ CREATE TABLE scrape_runs (
     finished_at TEXT,
     tires_found INTEGER,
     added       INTEGER DEFAULT 0,
+    reactivated INTEGER DEFAULT 0,
     removed     INTEGER DEFAULT 0,
     changed     INTEGER DEFAULT 0,
     error       TEXT    -- NULL if successful
@@ -732,8 +690,52 @@ and `scrape_runs` on each run.
 
 ---
 
-## Phase 9 — Admin Commands
-*Server admin controls — force scrapes, manage sources, view run logs.*
+## Cross-cutting requirement — Alert Eligibility Hardening (out-of-stock suppression) ✅ DONE
+*Unavailable/out-of-stock tires are now suppressed from public blem alerts.*
+
+### Implemented behavior
+Public alerts now suppress tires when availability signals indicate they are not buyable:
+- `stock_state === out_of_stock`
+- numeric quantity (`quantity_n`) is `<= 0`
+- quantity text contains unavailable markers (e.g. "out of stock", "unavailable", "sold out", "not available", "backorder")
+- quantity text parses as zero
+
+### Scope
+- Suppression is applied at alert-filter layer (`src/alertFilter.js`) so DB completeness
+  remains intact for `/blems`, `/find`, `/history`, and analytics.
+- Existing per-user subscription/watch routing remains unchanged.
+
+### Implementation notes
+- Stock suppression composes with size threshold filtering (`PUBLIC_ALERT_MIN_DIAMETER`).
+- Behavior is covered by `test/alertFilter.test.js`, including:
+  - added/reactivated with `out_of_stock` => suppressed
+  - added/reactivated with qty `0` / unavailable text => suppressed
+  - added/reactivated with `in_stock` / `low_stock` => allowed
+
+---
+
+## Phase 9 — README & Operator Docs
+*Write a production-ready README for setup, operations, and troubleshooting.*
+
+### Deliverables
+- `README.md` with:
+  - project purpose and architecture overview
+  - prerequisites and install (`npm install`, env vars, Discord app setup)
+  - run modes (normal scheduler vs `--simple-tire`), cron behavior, PM2 supervisor
+  - commands reference (`/ping`, `/blems`, `/find`, `/sources`, `/subscribe`, `/subscriptions`, `/unsubscribe`, `/history`, `/stats`)
+  - alert model and filters (`PUBLIC_ALERT_MIN_DIAMETER`, out-of-stock suppression behavior)
+  - scraper/source status matrix (active, deferred, blocked)
+  - troubleshooting section (Discord token, DB path, blocked sources, embed limits)
+  - testing instructions (`npm test`)
+
+### Notes
+- Keep README aligned with current implementation, not aspirational phases.
+- Include a short “Roadmap status” section linking this file.
+
+---
+
+## Phase 10 — Admin Commands (open)
+*Server admin controls — force scrapes, manage sources, and inspect run health.*
 
 ### Commands (guild-admin role required)
 ```
@@ -769,7 +771,37 @@ module.exports = {
 
 ---
 
-## Phase 10 — Plan Polish
+## Phase 11 — Natural Language Search (LLM-assisted)
+*Add natural-language query support on top of the backend tire index.*
+
+### Goal
+Allow users to ask in plain language (e.g. "show me 37s under $500 for 17-inch rims,
+prefer in-stock blems") and map that query to structured filters + ranked results.
+
+### High-level approach
+- Keep SQLite as source of truth.
+- Add NL parser layer that converts text → structured query object:
+  - source, brand/model tokens, size, rim, price ceiling, blem-only toggle,
+    in-stock preference/requirement, optional sort preference.
+- Execute structured query via existing repository methods (`searchTires`, `getActiveTires`),
+  then apply deterministic post-ranking.
+
+### Interfaces
+- Option A: extend `/find` with `nl_query` string option.
+- Option B: add `/ask` command dedicated to NL search.
+
+### LLM integration notes
+- Keep prompts and parsing strict (JSON schema output).
+- Fallback behavior when model parse fails: safe lexical search on raw query.
+- Log parse decisions for debugging and prompt iteration.
+
+### Validation
+- Golden-query fixture set (10–20 NL prompts) with expected parsed filters.
+- Regression tests around ambiguous rim/size phrases and stock intent.
+
+---
+
+## Phase 12 — Plan Polish
 *Catchall phase for tasks that don't fit cleanly into earlier phases, or that
 were deferred due to external blockers. Pull items into earlier phases whenever
 they become relevant.*
@@ -810,25 +842,28 @@ effort per source.
 ## Build Order & Dependencies
 
 ```
-Phase 1  (Bot Foundation)    ✅ Done
-Phase 2  (Browse/Search)     ✅ Done
-Phase 3  (Subscriptions)     ✅ Done
-Phase 4  (Pinned watches)    ✅ Done — merged into /subscribe
-Phase 5  (Data discovery)    ✅ Done — all source docs + unified model written
-Phase 6  (More scrapers)     ✅ Done (no-proxy sources) — TreadWright + TireMart live
-Rim filtering                ← NEXT — rim_diam column, parseRimDiam, extend /blems + /find + /subscribe
-Phase 7  (Cross-site search)   after rim filtering; 2 live scrapers is enough to be useful
-Phase 8  (History/Stats)     ✅ Done — schema + /history + /stats commands
-Phase 9  (Admin)               after Phase 7 (or in parallel, no hard dep)
-Phase 10 (Plan polish)         catchall; pull items earlier as needed
+Phase 1   (Bot Foundation)         ✅ Done
+Phase 2   (Browse/Search)          ✅ Done
+Phase 3   (Subscriptions)          ✅ Done
+Phase 4   (Pinned watches)         ✅ Done — merged into /subscribe
+Phase 5   (Data discovery)         ✅ Done — all source docs + unified model written
+Phase 6   (More scrapers)          ✅ Done (no-proxy sources) — Interco + TreadWright + TireMart live
+Rim filtering                      ✅ Done — exact rim matching only (`rim`); no `rim_min`/`rim_max`
+Public alert stock suppression     ✅ Done — out-of-stock/unavailable tires suppressed in `alertFilter` + tests
+Phase 7   (Backend search)         ✅ In place — `/find` stays DB-backed (no live site search)
+Phase 8   (History/Stats)          ✅ Done — schema + /history + /stats commands
+Phase 9   (README/docs)            ⏳ Open — author full README + operations docs
+Phase 10  (Admin)                  ⏳ Open — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
+Phase 11  (NL search)              ⏳ Planned — LLM-assisted NL→structured query mapping
+Phase 12  (Plan polish)            ⏳ Ongoing catchall
 ```
 
-Next up: Rim size filtering (see section above), then Phase 7 (`/find` live
-cross-site scrape) and Phase 9 (`/admin` commands) can be built in either order.
+Immediate next step: Phase 9 (README/docs), then Phase 10 (`/admin` commands).
+In parallel/afterward: Phase 11 (NL search).
 
 ---
 
-## Final File Structure (all phases complete)
+## Final File Structure (current + planned)
 
 ```
 index.js
@@ -845,48 +880,47 @@ src/
       ping.js
       blems.js
       find.js
+      sources.js
       subscribe.js
       unsubscribe.js
       subscriptions.js
-      watch.js
-      unwatch.js
-      watchlist.js
       history.js
       stats.js
-      admin.js
+      admin.js            (planned — Phase 10)
   scrapers/
     index.js
-    utils.js            (robots.txt check, politeFetch helper)
     interco.js
-    tiremart.js         (Phase 6 — HIGH)
-    simpletire.js       (Phase 6 — HIGH)
-    tirerack.js         (Phase 6 — HIGH)
-    fourwheelparts.js   (Phase 6 — MEDIUM)
-    treadwright.js      (Phase 6 — MEDIUM)
-    jegs.js             (Phase 6 — MEDIUM)
-    ...
+    treadwright.js
+    tiremart.js
+    simpletire.js        (implemented but not registered in scraper index)
+    # proxy-blocked candidates remain roadmap/docs only for now:
+    # jegs.js, fourwheelparts.js, summit.js
   db/
     client.js
     repository.js
   notifier/
-    discord.js          (repurposed as alert dispatcher, not just webhook)
+    discord.js
     email.js
+    subscriptionDispatch.js
   tracker.js
-  subscriptions.js      (Phase 3 — matching logic)
+  subscriptions.js
   scheduler.js
+  alertFilter.js
 test/
   tracker.test.js
-  subscriptions.test.js (Phase 3)
-  scrapers/
-    interco.test.js
-    ...
-  notifier/
-    discord.test.js
+  subscriptions.test.js
+  db/searchTires.test.js
+  notifier/discord.test.js
+  scrapers/interco.test.js
+  utils/tires.test.js
 docs/
   plans/
-    blem-bot-roadmap.md  (this file)
-    phase-1-bot-foundation.md
-    phase-2-browse-commands.md
+    blem-bot-roadmap.md
+  sources/
+    source-registry.md
+    unified-model.md
+    schema-impact.md
+    go-no-go.md
     ...
 ```
 

@@ -8,7 +8,7 @@
  *         /subscribe sku:XBOG-3712 track_changes:true track_removed:true
  *
  * Guard: track_changes / track_removed require at least one narrowing filter
- * (sku, brand, size, or size_min) to prevent firehose spam.
+ * (sku, brand, size, size_min, or rim) to prevent firehose spam.
  */
 
 const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js');
@@ -23,7 +23,7 @@ module.exports = {
         .addStringOption(o  => o.setName('brand').setDescription('Brand substring match (e.g. bogger)'))
         .addStringOption(o  => o.setName('size').setDescription('Exact tire size (e.g. 37x12.50R17LT)'))
         .addIntegerOption(o => o.setName('size_min').setDescription('Minimum tire diameter in inches (e.g. 37)'))
-        .addIntegerOption(o => o.setName('rim_min').setDescription('Minimum rim diameter in inches (e.g. 17)'))
+        .addIntegerOption(o => o.setName('rim').setDescription('Exact rim diameter in inches (e.g. 17)'))
         .addNumberOption(o  => o.setName('price_max').setDescription('Maximum price in dollars'))
         .addStringOption(o  => o.setName('source').setDescription('Only this source (e.g. interco)'))
         .addBooleanOption(o => o.setName('track_changes').setDescription('Also alert on qty/price changes (requires a narrowing filter).'))
@@ -56,7 +56,7 @@ module.exports = {
             brand:          interaction.options.getString('brand')   || null,
             size:           interaction.options.getString('size')    || null,
             size_min:       interaction.options.getInteger('size_min'),
-            rim_min:        interaction.options.getInteger('rim_min'),
+            rim:            interaction.options.getInteger('rim'),
             price_max:      interaction.options.getNumber('price_max'),
             notify_dm:      dmFlag,
             notify_channel,
@@ -69,7 +69,7 @@ module.exports = {
             await interaction.reply({
                 content:
                     '❌ `track_changes` and `track_removed` require at least one narrowing filter — ' +
-                    'add `sku`, `brand`, `size`, or `size_min` so you don\'t get alerted on every tire.',
+                    'add `sku`, `brand`, `size`, `size_min`, or `rim` so you don\'t get alerted on every tire.',
                 flags: MessageFlags.Ephemeral,
             });
             return;
@@ -101,7 +101,7 @@ function describeSub(sub) {
     if (sub.brand)            parts.push(`brand:${sub.brand}`);
     if (sub.size)             parts.push(`size:${sub.size}`);
     if (sub.size_min != null) parts.push(`≥${sub.size_min}"`);
-    if (sub.rim_min  != null) parts.push(`rim≥${sub.rim_min}"`);
+    if (sub.rim != null)      parts.push(`rim:${sub.rim}"`);
     if (sub.price_max != null) parts.push(`≤$${sub.price_max}`);
     if (sub.source)           parts.push(`source:${sub.source}`);
     return parts.join(', ');

@@ -87,8 +87,7 @@ function describeFilters(f) {
     if (f.brand)              parts.push(`brand:${f.brand}`);
     if (f.sizeMin != null)    parts.push(`≥${f.sizeMin}"`);
     if (f.sizeMax != null)    parts.push(`≤${f.sizeMax}"`);
-    if (f.rimMin != null)     parts.push(`rim≥${f.rimMin}"`);
-    if (f.rimMax != null)     parts.push(`rim≤${f.rimMax}"`);
+    if (f.rim != null)        parts.push(`rim:${f.rim}"`);
     if (f.priceMax != null)   parts.push(`≤$${f.priceMax}`);
     if (f.includeOutOfStock)  parts.push('incl. out-of-stock');
     return parts.join(', ');
@@ -102,8 +101,7 @@ module.exports = {
         .addStringOption(o => o.setName('brand').setDescription('Filter by brand (case-insensitive)'))
         .addIntegerOption(o => o.setName('size_min').setDescription('Minimum tire diameter in inches'))
         .addIntegerOption(o => o.setName('size_max').setDescription('Maximum tire diameter in inches'))
-        .addIntegerOption(o => o.setName('rim_min').setDescription('Minimum rim diameter in inches (e.g. 17)'))
-        .addIntegerOption(o => o.setName('rim_max').setDescription('Maximum rim diameter in inches (e.g. 20)'))
+        .addIntegerOption(o => o.setName('rim').setDescription('Exact rim diameter in inches (e.g. 17)'))
         .addNumberOption(o => o.setName('price_max').setDescription('Maximum price in dollars'))
         .addBooleanOption(o => o.setName('include_oos').setDescription('Include out-of-stock tires (hidden by default)')),
 
@@ -113,8 +111,7 @@ module.exports = {
             brand:             interaction.options.getString('brand')       || undefined,
             sizeMin:           interaction.options.getInteger('size_min')   ?? undefined,
             sizeMax:           interaction.options.getInteger('size_max')   ?? undefined,
-            rimMin:            interaction.options.getInteger('rim_min')    ?? undefined,
-            rimMax:            interaction.options.getInteger('rim_max')    ?? undefined,
+            rim:               interaction.options.getInteger('rim')         ?? undefined,
             priceMax:          interaction.options.getNumber('price_max')   ?? undefined,
             includeOutOfStock: interaction.options.getBoolean('include_oos') ?? false,
         };

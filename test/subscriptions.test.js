@@ -26,6 +26,7 @@ const sub = (over = {}) => ({
     brand: null,
     size: null,
     size_min: null,
+    rim: null,
     price_max: null,
     notify_dm: 1,
     notify_channel: null,
@@ -67,15 +68,27 @@ describe('tireMatchesSubscription', () => {
         expect(tireMatchesSubscription(tire(), sub({ size_min: 40 }))).toBe(false);
     });
 
+    test('rim is exact match (rounded), derived from size when needed', () => {
+        expect(tireMatchesSubscription(tire(), sub({ rim: 17 }))).toBe(true);
+        expect(tireMatchesSubscription(tire(), sub({ rim: 18 }))).toBe(false);
+        expect(tireMatchesSubscription(tire({ rim_diam: 18 }), sub({ rim: 18 }))).toBe(true);
+        expect(tireMatchesSubscription(tire({ size: '37x12.50R17.4LT' }), sub({ rim: 17 }))).toBe(true);
+    });
+
+    test('rim filter excludes tires with unparseable/missing rim', () => {
+        expect(tireMatchesSubscription(tire({ size: 'UNKNOWN', rim_diam: null }), sub({ rim: 17 }))).toBe(false);
+    });
+
     test('price_max excludes overpriced tires', () => {
         expect(tireMatchesSubscription(tire(), sub({ price_max: 500 }))).toBe(true);
         expect(tireMatchesSubscription(tire(), sub({ price_max: 400 }))).toBe(false);
     });
 
     test('all filters AND together', () => {
-        const s = sub({ source: 'interco', brand: 'bogger', size_min: 35, price_max: 500 });
+        const s = sub({ source: 'interco', brand: 'bogger', size_min: 35, rim: 17, price_max: 500 });
         expect(tireMatchesSubscription(tire(), s)).toBe(true);
         expect(tireMatchesSubscription(tire({ price_cents: 99900 }), s)).toBe(false);
+        expect(tireMatchesSubscription(tire({ size: '37x12.50R18LT' }), s)).toBe(false);
     });
 });
 
@@ -87,11 +100,12 @@ describe('hasNarrowingFilter', () => {
         expect(hasNarrowingFilter(sub({ price_max: 500 }))).toBe(false);
         expect(hasNarrowingFilter(sub({ source: 'interco' }))).toBe(false);
     });
-    test('sku, brand, size, size_min all narrow', () => {
+    test('sku, brand, size, size_min, rim all narrow', () => {
         expect(hasNarrowingFilter(sub({ sku: 'X' }))).toBe(true);
         expect(hasNarrowingFilter(sub({ brand: 'bogger' }))).toBe(true);
         expect(hasNarrowingFilter(sub({ size: '37x12.50R17' }))).toBe(true);
         expect(hasNarrowingFilter(sub({ size_min: 37 }))).toBe(true);
+        expect(hasNarrowingFilter(sub({ rim: 17 }))).toBe(true);
     });
 });
 

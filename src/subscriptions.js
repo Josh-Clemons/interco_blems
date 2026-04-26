@@ -9,7 +9,7 @@
  *   sub.brand          — case-insensitive substring; null = any
  *   sub.size           — exact size string match; null = any
  *   sub.size_min       — min diameter in inches; null = no minimum
- *   sub.rim_min        — min rim diameter in inches; null = no minimum
+ *   sub.rim            — exact rim diameter in inches (rounded compare); null = any
  *   sub.price_max      — max price; null = no ceiling
  *   sub.notify_changed — also alert on qty/price changes to matching tires
  *   sub.notify_removed — also alert when a matching tire disappears
@@ -46,9 +46,9 @@ function tireMatchesSubscription(tire, sub) {
         if (d == null || d < sub.size_min) return false;
     }
 
-    if (sub.rim_min != null) {
+    if (sub.rim != null) {
         const d = tire.rim_diam ?? parseRimDiam(tire.size);
-        if (d == null || d < sub.rim_min) return false;
+        if (d == null || Math.round(d) !== sub.rim) return false;
     }
 
     if (sub.price_max != null) {
@@ -63,7 +63,7 @@ function tireMatchesSubscription(tire, sub) {
  * guard track_changes / track_removed from firing on firehose subscriptions.
  */
 function hasNarrowingFilter(sub) {
-    return !!(sub.sku || sub.brand || sub.size || sub.size_min != null || sub.rim_min != null);
+    return !!(sub.sku || sub.brand || sub.size || sub.size_min != null || sub.rim != null);
 }
 
 /**

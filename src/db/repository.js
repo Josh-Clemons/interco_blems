@@ -76,8 +76,7 @@ function getTiresBySource(source) {
  *   brand              - case-insensitive substring match (optional)
  *   sizeMin            - min overall diameter in inches (optional)
  *   sizeMax            - max overall diameter in inches (optional)
- *   rimMin             - min rim diameter in inches (optional)
- *   rimMax             - max rim diameter in inches (optional)
+ *   rim               - exact rim diameter in inches (optional, rounded compare)
  *   priceMax           - max price in dollars (optional)
  *   isBlem             - true/false to filter by blem status (optional)
  *   category           - exact category match (optional)
@@ -85,7 +84,7 @@ function getTiresBySource(source) {
  *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  */
 function getActiveTires(filters = {}) {
-    const { source, brand, sizeMin, sizeMax, rimMin, rimMax, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
+    const { source, brand, sizeMin, sizeMax, rim, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
@@ -118,16 +117,10 @@ function getActiveTires(filters = {}) {
             return d != null && d <= sizeMax;
         });
     }
-    if (rimMin != null) {
+    if (rim != null) {
         rows = rows.filter(r => {
             const d = r.rim_diam || parseRimDiam(r.size);
-            return d != null && d >= rimMin;
-        });
-    }
-    if (rimMax != null) {
-        rows = rows.filter(r => {
-            const d = r.rim_diam || parseRimDiam(r.size);
-            return d != null && d <= rimMax;
+            return d != null && Math.round(d) === rim;
         });
     }
 
@@ -283,10 +276,10 @@ function upsertUser(id, username) {
 function createSubscription(sub) {
     const info = getDb().prepare(`
         INSERT INTO subscriptions
-            (user_id, source, sku, brand, size, size_min, rim_min, price_max,
+            (user_id, source, sku, brand, size, size_min, rim, price_max,
              notify_dm, notify_channel, notify_changed, notify_removed)
         VALUES
-            (@user_id, @source, @sku, @brand, @size, @size_min, @rim_min, @price_max,
+            (@user_id, @source, @sku, @brand, @size, @size_min, @rim, @price_max,
              @notify_dm, @notify_channel, @notify_changed, @notify_removed)
     `).run({
         user_id: sub.user_id,
@@ -295,7 +288,7 @@ function createSubscription(sub) {
         brand: sub.brand ?? null,
         size: sub.size ?? null,
         size_min: sub.size_min ?? null,
-        rim_min: sub.rim_min ?? null,
+        rim: sub.rim ?? null,
         price_max: sub.price_max ?? null,
         notify_dm: sub.notify_dm ? 1 : 0,
         notify_channel: sub.notify_channel ?? null,

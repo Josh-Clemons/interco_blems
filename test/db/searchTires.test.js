@@ -21,6 +21,7 @@ beforeAll(() => {
     insert({ source: 'interco',    sku: 'XBOG-42R',   brand: 'Bogger',      title: 'Bogger 42x14.50R17LT',   size: '42x14.50R17LT'  });
     insert({ source: 'treadwright',sku: 'TW-CLAW37',  brand: 'TreadWright', title: 'CLAW II 37x12.50R17LT',  size: '37x12.50R17LT'  });
     insert({ source: 'tiremart',   sku: 'tm-irok-35', brand: 'Interco',     title: 'IROK ND 35x12.50R18',    size: '35x12.50R18'    });
+    insert({ source: 'tiremart',   sku: 'tm-legacy-16', brand: 'Interco',   title: 'Legacy M/T 285/75R16',   size: '285/75R16'      });
     // Inactive row — must never appear in results
     insert({ source: 'interco',    sku: 'INACTIVE-1', brand: 'Bogger',      title: 'Old Bogger 37x12.50R17', size: '37x12.50R17LT', is_active: 0 });
 });
@@ -99,5 +100,16 @@ describe('searchTires()', () => {
 
         const none = searchTires('R17', { source: 'treadwright', size: 42 });
         expect(none).toHaveLength(0);
+    });
+
+    test('filters by exact rim diameter', () => {
+        const r17 = searchTires('R', { rim: 17 });
+        expect(r17.map(t => t.sku).sort()).toEqual(['TW-CLAW37', 'XBOG-42R']);
+
+        const r18 = searchTires('R', { rim: 18 });
+        expect(r18.map(t => t.sku)).toEqual(['tm-irok-35']);
+
+        const r16 = searchTires('R', { rim: 16 });
+        expect(r16.map(t => t.sku)).toEqual(['tm-legacy-16']);
     });
 });

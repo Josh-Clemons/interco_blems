@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     brand          TEXT,                        -- NULL = any brand (case-insensitive substring)
     size           TEXT,                        -- NULL = any size; set for exact-size watches
     size_min       REAL,                        -- NULL = no minimum diameter (inches)
-    rim_min        INTEGER,                     -- NULL = no minimum rim diameter (inches)
+    rim            INTEGER,                     -- NULL = any rim diameter (exact inches)
     price_max      REAL,                        -- NULL = no maximum price
     notify_dm      INTEGER NOT NULL DEFAULT 1,  -- 1 = DM, 0 = post to notify_channel
     notify_channel TEXT,                        -- channel ID used when notify_dm = 0
