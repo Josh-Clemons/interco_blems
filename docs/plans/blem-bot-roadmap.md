@@ -826,6 +826,113 @@ module.exports = {
 
 ---
 
+## Phase 14 — Scraper Health & Regression Testing
+*Catch site redesigns early and verify scrapers are producing good data.*
+
+### Problem this solves
+Sites silently change their HTML structure, CSS class names, or JSON-LD schemas. When that happens
+the scraper keeps running — it just returns empty arrays or tires with all-null fields. The only
+current signal is a human noticing "hm, no new alerts in a while." This phase adds two complementary
+safety nets:
+
+1. **Fixture regression tests** (fast, offline, runs in CI): parse saved HTML snapshots through each
+   scraper's parser and assert that key fields are extracted. Fail immediately when a code or
+   structure change breaks extraction.
+
+2. **Live smoke script** (slow, hits real sites, run manually or on a schedule): actually scrapes
+   each source and validates the output contract — checks for minimum result counts, required field
+   population rates, and value sanity (price > 0, size parses to a valid diameter, etc.).
+
+These two layers complement each other: fixture tests catch code regressions without touching
+the network; the live smoke script catches site-side redesigns that no fixture can anticipate.
+
+### Part A — Fixture regression tests (in-suite)
+
+Extend `test/scrapers/` with one test file per scraper, on the same pattern as the existing
+`interco.test.js`:
+
+- `test/scrapers/treadwright.test.js`
+- `test/scrapers/tiremart.test.js`
+- `test/scrapers/simpletire.test.js`
+
+Each test file:
+1. Saves a representative HTML/JSON snippet as a literal string (or loads from
+   `test/fixtures/<source>.html`) — enough rows to cover the common cases.
+2. Imports and calls the scraper's parser function directly (not `scrape()`, which would
+   hit the network).
+3. Asserts the v2 Tire shape contract:
+   - At least 1 result
+   - `sku`, `size`, `price_cents` are non-null and non-empty
+   - `price_cents` is a positive integer
+   - `stock_state` is one of `in_stock | low_stock | out_of_stock | unknown`
+   - `overall_diam` and `rim_diam` parse to reasonable numbers (10–60 in)
+4. Covers edge cases unique to each source (e.g. TireMart's "Call for Price",
+   TreadWright's Shopify JSON variant structure, SimpleTire's JSON-LD Product vs ProductGroup).
+
+**Key constraint:** parser functions must be exportable (or extracted) so tests can import them
+without triggering a network fetch. Scrapers that currently inline their parser inside `scrape()`
+need a small refactor to expose it — e.g. `module.exports = { name, url, scrape, _parse }`.
+The `_parse` prefix signals it's test-only.
+
+### Part B — Live smoke script
+
+New file: `scripts/smoke-scrapers.js`
+
+```
+node scripts/smoke-scrapers.js [source]
+  Runs each scraper (or one named source) and validates output.
+  Does NOT write to the DB — read-only diagnostic.
+  Exits non-zero if any source fails validation.
+```
+
+Validation checks per source:
+1. **Minimum result count** — at least 1 tire returned. (A real site should always have inventory.)
+2. **Required field fill rate** — for each required field (`sku`, `size`, `price_cents`),
+   at least 80% of results must be non-null. A sudden drop to 0% signals a parser break.
+3. **Price sanity** — `price_cents > 0` for tires where price is populated.
+4. **Size parses** — `parseOverallDiam(size)` returns a number in [10, 120] for ≥ 80% of results.
+5. **No circuit-breaker trip** (SimpleTire only) — if the circuit opens during the smoke run,
+   report it explicitly rather than silently returning 0 results.
+
+Output format: one line per source with pass/fail and key metrics:
+```
+[interco]     ✅  48 tires | sku: 100% | price: 100% | size: 100%
+[treadwright] ✅  12 tires | sku: 100% | price: 100% | size: 92%
+[tiremart]    ✅  318 tires | sku: 100% | price: 87% | size: 100%
+[simpletire]  ⚠️  circuit open — skipping (cooldown until 14:30)
+```
+
+**The smoke script is intentionally NOT part of `npm test`** — it hits live sites
+and takes minutes. Run it:
+- Manually when alerts seem stale or a source goes quiet
+- Via `/admin scrape` followup (can call externally from a cron or after a scrape run)
+- Optionally on a weekly schedule via the blem-bot schedule system (Phase 12)
+
+### Part C — Field-population tracking in scrape_runs (optional, stretch)
+
+Add `null_rate_json` column to `scrape_runs` (TEXT, JSON blob): records the null rate for
+each required field in that run's output. `/admin runs` can surface a warning when a source's
+fill rate degrades across consecutive runs — a leading indicator of a parser breakage before
+the alert volume drops to zero.
+
+This is a stretch goal for the phase; skip if the fixture tests + smoke script provide
+sufficient coverage.
+
+### Deliverables summary
+| Artifact | Location | Runs in |
+|---|---|---|
+| Fixture tests (treadwright, tiremart, simpletire) | `test/scrapers/` | `npm test` |
+| Smoke script | `scripts/smoke-scrapers.js` | Manual / scheduled |
+| Parser exports (`_parse`) | Each scraper file | (enables tests) |
+| HTML fixtures | `test/fixtures/<source>.html` | Test suite |
+
+### Scope boundary
+- No changes to scraper behavior or scheduling.
+- No new DB schema unless the optional Part C is implemented.
+- The smoke script does not write to the DB.
+
+---
+
 ## Phase 12 — Natural Language Search (LLM-assisted)
 *Add natural-language query support on top of the backend tire index.*
 
@@ -900,12 +1007,13 @@ Phase 7   (Backend search)         ✅ In place — `/find` stays DB-backed (no 
 Phase 8   (History/Stats)          ✅ Done — schema + /history + /stats commands
 Phase 9   (Bug fixes)              ✅ Done — SimpleTire price + size extraction, TreadWright size regex, /find source search, /find overflow hint
 Phase 10  (README/docs)            ⏳ Open — author full README + operations docs
-Phase 11  (Admin)                  ⏳ Open — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
+Phase 11  (Admin)                  ✅ Done — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
 Phase 12  (NL search)              ⏳ Planned — LLM-assisted NL→structured query mapping
 Phase 13  (Plan polish)            ⏳ Ongoing catchall
+Phase 14  (Scraper health)         ⏳ Open — fixture regression tests + live smoke script
 ```
 
-Immediate next step: Phase 9 (bug fixes), then Phase 10 (README/docs), then Phase 11 (`/admin` commands).
+Immediate next step: Phase 10 (README/docs), then Phase 14 (scraper health tests).
 In parallel/afterward: Phase 12 (NL search).
 
 ---
@@ -933,13 +1041,13 @@ src/
       subscriptions.js
       history.js
       stats.js
-      admin.js            (planned — Phase 11)
+      admin.js
   scrapers/
     index.js
     interco.js
     treadwright.js
     tiremart.js
-    simpletire.js        (implemented but not registered in scraper index)
+    simpletire.js        (nightly: true — excluded from runAll, included in /sources)
     # proxy-blocked candidates remain roadmap/docs only for now:
     # jegs.js, fourwheelparts.js, summit.js
   db/
@@ -953,13 +1061,23 @@ src/
   subscriptions.js
   scheduler.js
   alertFilter.js
+scripts/
+  smoke-scrapers.js     (planned — Phase 14)
 test/
   tracker.test.js
   subscriptions.test.js
   db/searchTires.test.js
   notifier/discord.test.js
   scrapers/interco.test.js
+  scrapers/treadwright.test.js  (planned — Phase 14)
+  scrapers/tiremart.test.js     (planned — Phase 14)
+  scrapers/simpletire.test.js   (planned — Phase 14)
   utils/tires.test.js
+  fixtures/
+    interco.html        (planned — Phase 14)
+    treadwright.html    (planned — Phase 14)
+    tiremart.html       (planned — Phase 14)
+    simpletire.html     (planned — Phase 14)
 docs/
   plans/
     blem-bot-roadmap.md

@@ -31,7 +31,7 @@ function sleep(ms) {
 }
 
 /* ── Circuit Breaker ──────────────────────────────────────────────── */
-const MAX_CONSECUTIVE_FAILURES = parseInt(process.env.SIMPLETIRE_MAX_FAILURES || '5', 10);
+const MAX_CONSECUTIVE_FAILURES = parseInt(process.env.SIMPLETIRE_MAX_FAILURES || '2', 10);
 const COOLDOWN_MS = parseInt(process.env.SIMPLETIRE_COOLDOWN_MINS || '60', 10) * 60_000;
 const BLOCK_SIGNATURES = ['resolving issues', 'access denied', 'please try again later'];
 
