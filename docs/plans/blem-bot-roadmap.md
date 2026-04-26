@@ -1002,8 +1002,8 @@ users in channels where the dedicated chat channel isn't accessible or convenien
 ### LLM provider
 Use **GitHub Models** (`models.inference.ai.azure.com`) — an OpenAI-compatible endpoint
 available through a GitHub Copilot subscription. Auth is a GitHub Personal Access Token
-(Settings → Developer settings → Personal access tokens → Fine-grained tokens, no special
-scopes needed). Configure via env:
+(Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+Account permissions → **Models: Read**). Configure via env:
 
 ```
 GITHUB_MODELS_API_KEY=<github-pat>

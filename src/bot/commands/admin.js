@@ -3,7 +3,7 @@
  * Requires MANAGE_GUILD permission.
  */
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 const scrapers = require('../../scrapers');
 const repo     = require('../../db/repository');
 const runner   = require('../../runner');
@@ -64,7 +64,7 @@ function discordTimestamp(isoStr) {
 
 async function handleScrape(interaction) {
     const source = interaction.options.getString('source');
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (!source) {
         await interaction.editReply('⏳ Scraping all sources…');
@@ -147,7 +147,7 @@ async function handleSources(interaction) {
                 .addFields(...fields)
                 .setTimestamp(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
 
@@ -160,7 +160,7 @@ async function handleRuns(interaction) {
     const runs = repo.getRecentRuns(limit, source);
 
     if (runs.length === 0) {
-        await interaction.reply({ content: 'No runs found.', ephemeral: true });
+        await interaction.reply({ content: 'No runs found.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -183,7 +183,7 @@ async function handleRuns(interaction) {
                 .setDescription(lines.join('\n'))
                 .setTimestamp(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
 
@@ -193,7 +193,7 @@ async function handleErrors(interaction) {
     const errors = repo.getErrorRuns(7);
 
     if (errors.length === 0) {
-        await interaction.reply({ content: '✅ No scrape errors in the last 7 days.', ephemeral: true });
+        await interaction.reply({ content: '✅ No scrape errors in the last 7 days.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -207,6 +207,6 @@ async function handleErrors(interaction) {
                 .setDescription(lines.join('\n'))
                 .setTimestamp(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
