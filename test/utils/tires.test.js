@@ -1,4 +1,4 @@
-const { parseDiameter, parsePrice } = require('../../src/utils/tires');
+const { parseDiameter, parsePrice, extractSizeToken } = require('../../src/utils/tires');
 
 describe('parseDiameter()', () => {
     test('35x12.50R18LT  -> 35', () => expect(parseDiameter('35x12.50R18LT')).toBe(35));
@@ -19,4 +19,18 @@ describe('parsePrice()', () => {
     test('$199      -> 199',  () => expect(parsePrice('$199')).toBe(199));
     test('bogus     -> null', () => expect(parsePrice('free!')).toBeNull());
     test('null      -> null', () => expect(parsePrice(null)).toBeNull());
+});
+
+describe('extractSizeToken()', () => {
+    test('extracts flotation size from title', () => {
+        expect(extractSizeToken('Nitto Mud Grappler 33x12.50R20LT Light Truck Tires')).toBe('33x12.50R20LT');
+    });
+
+    test('extracts metric size from title', () => {
+        expect(extractSizeToken('Some Model 285/75R16 Tire')).toBe('285/75R16');
+    });
+
+    test('returns null when no size token present', () => {
+        expect(extractSizeToken('Westlake Mud Terrain Light Truck Tires')).toBeNull();
+    });
 });

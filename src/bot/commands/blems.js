@@ -114,6 +114,7 @@ module.exports = {
             rim:               interaction.options.getInteger('rim')         ?? undefined,
             priceMax:          interaction.options.getNumber('price_max')   ?? undefined,
             includeOutOfStock: interaction.options.getBoolean('include_oos') ?? false,
+            isBlem:            true,
         };
 
         const filterKey = cacheFilters(filters);

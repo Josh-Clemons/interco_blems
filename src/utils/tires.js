@@ -114,4 +114,25 @@ function filterSearchResults(tires, query, { size } = {}) {
     });
 }
 
-module.exports = { parseDiameter, parseRimDiam, parsePrice, filterSearchResults };
+/**
+ * Extracts a tire size token from arbitrary text, or null when none found.
+ * Handles common flotation and metric patterns seen in titles:
+ *   33x12.50R20LT, 35x12.5R17, 285/75R16, LT315/70R17
+ */
+function extractSizeToken(text) {
+    if (!text) return null;
+    const s = String(text);
+
+    const patterns = [
+        /\b(?:LT)?\d{2}x\d{1,2}(?:\.\d{1,2})?[Rr]\d{2}(?:\.\d)?(?:LT)?\b/i,
+        /\b(?:LT)?\d{3}\/(?:\d{2})[Rr]\d{2}(?:\.\d)?\b/i,
+    ];
+
+    for (const re of patterns) {
+        const m = s.match(re);
+        if (m) return m[0];
+    }
+    return null;
+}
+
+module.exports = { parseDiameter, parseRimDiam, parsePrice, filterSearchResults, extractSizeToken };

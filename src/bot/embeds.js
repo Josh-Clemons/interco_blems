@@ -16,6 +16,7 @@ const EMBED_COLOR = 0x2B2D31; // neutral dark-gray
  */
 function tireField(tire) {
     const blem  = tire.is_blem ? ' **[blem]**' : '';
+    const size  = tire.size || 'N/A';
     const qty   = tire.quantity_raw ?? 'N/A';
     const price = tire.price_cents != null ? `$${(tire.price_cents / 100).toFixed(2)}` : 'N/A';
     const link  = tire.product_url ? ` · [view](${tire.product_url})` : '';
@@ -23,7 +24,7 @@ function tireField(tire) {
     const source = tire.source ? `  |  Source: \`${tire.source}\`` : '';
 
     return {
-        name: `${tire.sku} — ${tire.size}${blem}`,
+        name: `${tire.sku} — ${size}${blem}`,
         value: `**${tire.brand || 'N/A'}**\nQty: ${qty}  |  Price: ${price}${source}${link}`,
         inline: false,
     };

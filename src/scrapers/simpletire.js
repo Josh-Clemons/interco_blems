@@ -11,6 +11,7 @@
 const cheerio = require('cheerio');
 const repo = require('../db/repository');
 const log = require('../logger');
+const { extractSizeToken } = require('../utils/tires');
 
 const NAME = 'simpletire';
 const URL = 'https://simpletire.com/categories/mud-terrain-tires';
@@ -220,10 +221,16 @@ function parseSkuPage($, url) {
         if (key && val) specs[key] = val;
     });
 
-    // Parse size from breadcrumb or page content
+    // Parse size from breadcrumb/title/specs
+    const headingText = $('h1').first().text().trim();
     const breadcrumb = $('[class*="breadcrumb"]').text();
-    const sizeMatch = breadcrumb.match(/((?:LT)?\d+[xX/][\d.]+[Rr]\d+(?:LT)?)/);
-    const size = sizeMatch ? sizeMatch[1] : specs['tire size'] || specs['size'] || null;
+    const size =
+        extractSizeToken(headingText) ||
+        extractSizeToken(breadcrumb) ||
+        specs['tire size'] ||
+        specs['size'] ||
+        extractSizeToken(jsonLd?.name) ||
+        null;
 
     // Price
     let priceCents = null;
