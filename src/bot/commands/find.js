@@ -33,7 +33,7 @@ function buildSourceEmbed(source, tires) {
     else                                     subtitle = 'all standard';
 
     const overflow = total > MAX_PER_SOURCE
-        ? `\nShowing ${MAX_PER_SOURCE} of ${total}. Use \`/blems source:${source}\` to browse all.`
+        ? `\nShowing ${MAX_PER_SOURCE} of ${total}. Add \`size:\`, \`rim:\`, or \`source:\` filters to narrow results.`
         : null;
 
     return {
@@ -89,7 +89,6 @@ module.exports = {
         if (allResults.length === 0) {
             const hints = [
                 `Try a shorter term — \`/find query:claw\` instead of a full size string.`,
-                `Use \`/blems\` to browse all available blem inventory without filtering.`,
                 size   ? `The size filter requires an exact diameter match — try without \`size:${size}\` to broaden results.` : null,
                 rim    ? `The rim filter requires an exact rim match — try without \`rim:${rim}\` to broaden results.` : null,
                 source ? `Try without \`source:${source}\` to search all sites.` : null,

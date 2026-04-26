@@ -6,8 +6,8 @@ supports cross-source tire discovery.
 
 **Current state (implemented):**
 - Discord.js bot is the long-running process + scheduler host
-- Active scheduled scrapers: `interco`, `treadwright`, `tiremart`
-- `simpletire` scraper exists with a nightly full-crawl path, but remains unstable from current IP
+- Active scheduled scrapers: `interco`, `treadwright`, `tiremart` (every 30 min, Mon–Fri 6am–6pm Central)
+- `simpletire` runs as a separate nightly full crawl at 2 AM Central via `runSimpleTireFull()` — intentionally excluded from the normal scraper registry since the crawl takes several hours
 - SQLite v2 model in production: `tires`, `email_log`, `users`, `subscriptions`, `tire_history`, `scrape_runs`
 - Public alert feed + per-user subscription fan-out both active
 - Live slash commands: `/ping`, `/blems`, `/find`, `/sources`, `/subscribe`, `/subscriptions`, `/unsubscribe`, `/history`, `/stats`
@@ -67,7 +67,7 @@ src/
       subscriptions.js <- /subscriptions (Phase 3)
       history.js     <- /history (Phase 8)
       stats.js       <- /stats (Phase 8)
-      admin.js       <- /admin (planned, Phase 10)
+      admin.js       <- /admin (planned, Phase 11)
     interactions.js  <- routes incoming interactions to the right command handler
     embeds.js        <- shared embed builder helpers (tire cards, paginated lists)
 ```
@@ -478,7 +478,7 @@ Register in `src/scrapers/index.js`. That's the entire integration.
 |-------------|-------------------------------------------|-------------------------------------------------|
 | TreadWright | ✅ Done                                   | Shopify JSON API, blems + regular catalog        |
 | TireMart    | ✅ Done                                   | BigCommerce SSR, highest-value blem source       |
-| SimpleTire  | ✅ Written → moved to Phase 12            | Server returning 500s for this IP               |
+| SimpleTire  | ✅ Live (stable)                          | Nightly full crawl at 2 AM Central via `runSimpleTireFull()` — excluded from normal scraper registry (takes several hours) |
 | JEGS        | Blocked — Cloudflare Turnstile            | Dedicated blem category; needs CF bypass infra  |
 | 4WheelParts | Blocked — Cloudflare Managed Challenge    | No blems; needs CF bypass infra                 |
 | Summit      | Blocked — Imperva Incapsula               | Blems intermittent; needs proxy infra           |
@@ -523,13 +523,6 @@ Before adding any scraper, verify it won't get us IP-banned or violate ToS:
 5. **ToS review:**
    Quick read of the site's Terms of Service. If it explicitly prohibits scraping,
    same treatment as robots.txt disallow — log loudly and don't register.
-
-These rules live in a helper module so each scraper gets them for free:
-```js
-// src/scrapers/utils.js
-async function checkRobotsTxt(baseUrl, path) { ... }
-async function politeFetch(url, opts) { ... }  // injects UA, handles 429/503
-```
 
 ### JS-rendered pages
 If a site requires JS, the scraper should use puppeteer (headless Chrome) scoped
@@ -714,7 +707,69 @@ Public alerts now suppress tires when availability signals indicate they are not
 
 ---
 
-## Phase 9 — README & Operator Docs
+## Phase 9 — Scraper & Command Bug Fixes (immediate)
+*Fix known data-quality and command-behavior issues identified in live usage.*
+
+### Scope
+This phase covers two classes of work:
+1. **Scraper data quality** — review all active scrapers (interco, treadwright, tiremart,
+   simpletire) and fix any fields that produce null/N/A where a value exists on the page.
+   Known issue: SimpleTire price. Others may surface on inspection.
+2. **Command behavior** — fix `/find` bugs identified in live use.
+
+### Bug 1 — SimpleTire price missing in alerts
+Price shows on the SimpleTire product page but appears as N/A in Discord messages.
+The current scraper extracts price via `[class*="price"]` CSS selector + JSON-LD
+fallback (`jsonLd.offers.price`). One or both paths fail to produce `price_cents`
+for some SKUs.
+
+**Files:**
+- `src/scrapers/simpletire.js` — price extraction logic (lines ~236–244, 329)
+- `test/scrapers/` — add/extend SimpleTire price test if coverage is absent
+
+**Fix approach:**
+1. Inspect a live SimpleTire tire page to confirm which DOM element contains the
+   rendered price (CSS class name may have changed or be dynamic).
+2. Check whether `jsonLd.offers.price` is populated for those SKUs (vs
+   `jsonLd.offers.lowPrice` or an offers array).
+3. Add fallback extraction path covering whatever the page actually exposes.
+4. Verify `price_cents` is non-null for a sample of scraped tires.
+
+### Bug 2 — /find query does not match source names
+`/find query:interco` returns no results because `searchTires` only matches the
+query string against `sku`, `brand`, `title`, and `size` columns — `source` is not
+included in the text-search clause. The `source` filter option works, but the free-
+text `query` arg ignores source.
+
+**Files:**
+- `src/db/repository.js` — `searchTires()` instr clauses (lines ~31–36)
+- `test/db/searchTires.test.js` — add test for source-name substring match
+
+**Fix approach:**
+Add `OR instr(lower(source), lower(?)) > 0` to the existing instr block and pass
+the corresponding query param. That makes `/find query:interco` behave like the
+implicit `source:interco` filter.
+
+### Bug 3 — /find overflow hint incorrectly suggests /blems
+When `/find` returns more than MAX_PER_SOURCE results it shows:
+> Showing 10 of N. Use `/blems source:X` to browse all.
+
+This is wrong — `/blems` is blem-only; `/find` covers all inventory. The hint
+should suggest narrowing within `/find` instead.
+
+**Files:**
+- `src/bot/commands/find.js` — `buildSourceEmbed()` overflow string (line ~36)
+
+**Fix approach:**
+Replace overflow hint with:
+> Showing 10 of N. Add `size:`, `rim:`, or `source:` filters to narrow results.
+
+Also remove the `/blems` prompt from the no-results hints block (line ~92) — users
+who already used `/find` don't need to be redirected to a more limited command.
+
+---
+
+## Phase 10 — README & Operator Docs
 *Write a production-ready README for setup, operations, and troubleshooting.*
 
 ### Deliverables
@@ -734,7 +789,7 @@ Public alerts now suppress tires when availability signals indicate they are not
 
 ---
 
-## Phase 10 — Admin Commands (open)
+## Phase 11 — Admin Commands (open)
 *Server admin controls — force scrapes, manage sources, and inspect run health.*
 
 ### Commands (guild-admin role required)
@@ -771,7 +826,7 @@ module.exports = {
 
 ---
 
-## Phase 11 — Natural Language Search (LLM-assisted)
+## Phase 12 — Natural Language Search (LLM-assisted)
 *Add natural-language query support on top of the backend tire index.*
 
 ### Goal
@@ -801,21 +856,12 @@ prefer in-stock blems") and map that query to structured filters + ranked result
 
 ---
 
-## Phase 12 — Plan Polish
+## Phase 13 — Plan Polish
 *Catchall phase for tasks that don't fit cleanly into earlier phases, or that
 were deferred due to external blockers. Pull items into earlier phases whenever
 they become relevant.*
 
 ### Backlog
-
-#### SimpleTire scraper (deferred from Phase 6)
-- `src/scrapers/simpletire.js` is already written
-- Blocked: SimpleTire's server returns 500 errors for this IP
-- Resolution options: wait for the block to lift, retry from a different IP/network,
-  or use a proxy for this scraper only
-- Once unblocked: register in `src/scrapers/index.js` and verify output shape matches v2 model
-- Value: richest spec data of any accessible source (25+ fields, SimpleScore, reviews,
-  3PMS, weight, tread depth) — worth enabling when the IP issue is resolved
 
 #### Discord message / alert styling review
 The current alert embeds are functional but rough — they were built to ship, not
@@ -847,19 +893,20 @@ Phase 2   (Browse/Search)          ✅ Done
 Phase 3   (Subscriptions)          ✅ Done
 Phase 4   (Pinned watches)         ✅ Done — merged into /subscribe
 Phase 5   (Data discovery)         ✅ Done — all source docs + unified model written
-Phase 6   (More scrapers)          ✅ Done (no-proxy sources) — Interco + TreadWright + TireMart live
+Phase 6   (More scrapers)          ✅ Done (no-proxy sources) — Interco + TreadWright + TireMart (normal run) + SimpleTire (nightly)
 Rim filtering                      ✅ Done — exact rim matching only (`rim`); no `rim_min`/`rim_max`
 Public alert stock suppression     ✅ Done — out-of-stock/unavailable tires suppressed in `alertFilter` + tests
 Phase 7   (Backend search)         ✅ In place — `/find` stays DB-backed (no live site search)
 Phase 8   (History/Stats)          ✅ Done — schema + /history + /stats commands
-Phase 9   (README/docs)            ⏳ Open — author full README + operations docs
-Phase 10  (Admin)                  ⏳ Open — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
-Phase 11  (NL search)              ⏳ Planned — LLM-assisted NL→structured query mapping
-Phase 12  (Plan polish)            ⏳ Ongoing catchall
+Phase 9   (Bug fixes)              ✅ Done — SimpleTire price + size extraction, TreadWright size regex, /find source search, /find overflow hint
+Phase 10  (README/docs)            ⏳ Open — author full README + operations docs
+Phase 11  (Admin)                  ⏳ Open — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
+Phase 12  (NL search)              ⏳ Planned — LLM-assisted NL→structured query mapping
+Phase 13  (Plan polish)            ⏳ Ongoing catchall
 ```
 
-Immediate next step: Phase 9 (README/docs), then Phase 10 (`/admin` commands).
-In parallel/afterward: Phase 11 (NL search).
+Immediate next step: Phase 9 (bug fixes), then Phase 10 (README/docs), then Phase 11 (`/admin` commands).
+In parallel/afterward: Phase 12 (NL search).
 
 ---
 
@@ -886,7 +933,7 @@ src/
       subscriptions.js
       history.js
       stats.js
-      admin.js            (planned — Phase 10)
+      admin.js            (planned — Phase 11)
   scrapers/
     index.js
     interco.js

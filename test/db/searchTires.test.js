@@ -102,6 +102,20 @@ describe('searchTires()', () => {
         expect(none).toHaveLength(0);
     });
 
+    test('matches on source name substring', () => {
+        const r = searchTires('tiremart');
+        expect(r).toHaveLength(2);
+        expect(r.every(t => t.source === 'tiremart')).toBe(true);
+
+        const interco = searchTires('interco');
+        expect(interco.some(t => t.source === 'interco')).toBe(true);
+    });
+
+    test('source name match is case-insensitive', () => {
+        expect(searchTires('TireMart')).toHaveLength(2);
+        expect(searchTires('INTERCO')).not.toHaveLength(0);
+    });
+
     test('filters by exact rim diameter', () => {
         const r17 = searchTires('R', { rim: 17 });
         expect(r17.map(t => t.sku).sort()).toEqual(['TW-CLAW37', 'XBOG-42R']);

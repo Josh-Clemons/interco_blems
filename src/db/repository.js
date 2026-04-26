@@ -6,11 +6,11 @@ const { parseDiameter, parseRimDiam, parsePrice } = require('../utils/tires');
 // ---------------------------------------------------------------------------
 
 /**
- * Full-text search across sku, brand, title, and size fields.
+ * Full-text search across sku, brand, title, size, and source fields.
  * Returns active tires from all sources (blem and non-blem) whose text fields
  * contain the query string. Results are sorted by source then sku.
  *
- * @param {string} query   - substring matched case-insensitively against sku/brand/title/size
+ * @param {string} query   - substring matched case-insensitively against sku/brand/title/size/source
  * @param {object} [filters]
  *   source             - limit to one source (optional)
  *   size               - exact overall diameter in inches (optional, post-filter)
@@ -29,12 +29,13 @@ function searchTires(query, filters = {}) {
 
     const q = query; // instr() does substring match without wildcards
     clauses.push(`(
-        instr(lower(sku),   lower(?)) > 0
-        OR instr(lower(brand),  lower(?)) > 0
-        OR instr(lower(title),  lower(?)) > 0
-        OR instr(lower(size),   lower(?)) > 0
+        instr(lower(sku),    lower(?)) > 0
+        OR instr(lower(brand),   lower(?)) > 0
+        OR instr(lower(title),   lower(?)) > 0
+        OR instr(lower(size),    lower(?)) > 0
+        OR instr(lower(source),  lower(?)) > 0
     )`);
-    params.push(q, q, q, q);
+    params.push(q, q, q, q, q);
 
     let rows = getDb()
         .prepare(`SELECT * FROM tires WHERE ${clauses.join(' AND ')} ORDER BY source, brand, sku`)

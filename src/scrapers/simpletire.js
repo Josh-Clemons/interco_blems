@@ -184,12 +184,14 @@ function extractSkuUrls($) {
  * Parse specs from a SKU detail page.
  */
 function parseSkuPage($, url) {
-    // Extract JSON-LD
+    // Extract JSON-LD — prefer Product type; fall back to ProductGroup
     let jsonLd = null;
     $('script[type="application/ld+json"]').each((_, el) => {
         try {
             const data = JSON.parse($(el).html());
-            if (data['@type'] === 'Product' || data['@type'] === 'ProductGroup') {
+            if (data['@type'] === 'Product') {
+                jsonLd = data; // Product always wins
+            } else if (data['@type'] === 'ProductGroup' && !jsonLd) {
                 jsonLd = data;
             }
         } catch {}
@@ -221,27 +223,36 @@ function parseSkuPage($, url) {
         if (key && val) specs[key] = val;
     });
 
-    // Parse size from breadcrumb/title/specs
+    // Parse size from heading/breadcrumb/specs
     const headingText = $('h1').first().text().trim();
-    const breadcrumb = $('[class*="breadcrumb"]').text();
+    // aria-current="page" is the active breadcrumb link — reliably contains "35x13.50R20LT 121Q"
+    const currentCrumbText = $('[aria-current="page"]').first().text().trim();
+    const breadcrumb = $('[class*="breadcrumb"]').text(); // fallback; often empty with hashed classes
     const size =
         extractSizeToken(headingText) ||
+        extractSizeToken(currentCrumbText) ||
         extractSizeToken(breadcrumb) ||
         specs['tire size'] ||
         specs['size'] ||
         extractSizeToken(jsonLd?.name) ||
         null;
 
-    // Price
+    // Price — lead with JSON-LD (tied to the specific SKU in the URL); DOM fallback
     let priceCents = null;
-    const priceText = $('[class*="price"]').first().text();
-    const priceMatch = priceText.match(/\$?([\d,]+\.?\d*)/);
-    if (priceMatch) {
-        priceCents = Math.round(parseFloat(priceMatch[1].replace(',', '')) * 100);
-    }
-    // Fallback to JSON-LD
-    if (!priceCents && jsonLd?.offers?.price) {
-        priceCents = Math.round(parseFloat(jsonLd.offers.price) * 100);
+
+    // 1. JSON-LD Product.offers — most accurate; offers is an array on Product type
+    const offerSrc = jsonLd?.offers ?? jsonLd?.hasVariant?.[0]?.offers;
+    const offerObj = Array.isArray(offerSrc) ? offerSrc[0] : offerSrc;
+    const offerPrice = offerObj?.price ?? offerObj?.lowPrice;
+    if (offerPrice) priceCents = Math.round(parseFloat(offerPrice) * 100);
+
+    // 2. DOM fallback — data-component attrs are stable even with hashed CSS class names
+    if (!priceCents) {
+        const priceText =
+            $('[data-component="Prices"] span').first().text() ||
+            $('[class*="price"]').first().text();
+        const priceMatch = priceText.match(/\$?([\d,]+\.?\d*)/);
+        if (priceMatch) priceCents = Math.round(parseFloat(priceMatch[1].replace(',', '')) * 100);
     }
 
     // Load index — "3858 lbs/3527 lbs (127/124)" or "127"

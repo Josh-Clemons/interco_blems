@@ -6,12 +6,15 @@
  * Blem detection via tags array containing "blemish".
  */
 
+const { extractSizeToken } = require('../utils/tires');
+
 const NAME = 'treadwright';
 const URL = 'https://www.treadwright.com/collections/filter';
 const API_BASE = 'https://www.treadwright.com/collections/filter/products.json';
 
-// Title regex: [BLEMISH] LT | {AT/MT} {pattern} {size} {ply} PLY REMOLD USA
-const TITLE_RE = /^(?:BLEMISH\s+)?(?:LT\s*\|\s*)?([AM]T)\s+(.+?)\s+([\d.]+[xX/][\d.]+[Rr][\d.]+)\s+(\d+)\s*PLY\s+REMOLD\s+USA$/;
+// Title regex: [BLEMISH] [LT] | {AT/MT} {pattern} {size} {ply} PLY REMOLD USA
+// /i for case-insensitive "Remold"; prefix group handles BLEMISH|, LT|, or BLEMISH LT|
+const TITLE_RE = /^(?:(?:BLEMISH\s+)?(?:LT\s*)?\|\s*)?([AM]T)\s+(.+?)\s+([\d.]+[xX/][\d.]+[Rr][\d.]+)\s+(\d+)\s*PLY\s+REMOLD\s+USA/i;
 
 /**
  * Fetch all pages of products from Shopify JSON API.
@@ -89,7 +92,7 @@ async function scrape() {
         const category = getCategory(tags);
         const loadRange = getLoadRange(tags) || vendorData.load_range || null;
 
-        const size = titleMatch ? titleMatch[3] : null;
+        const size = titleMatch ? titleMatch[3] : extractSizeToken(product.title);
         const ply = titleMatch ? parseInt(titleMatch[4], 10) : null;
         const productLine = titleMatch ? titleMatch[2] : null; // e.g. "CLAW II"
 
