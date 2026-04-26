@@ -556,6 +556,70 @@ added as an optional dependency and only loaded by scrapers that need it.
 
 ---
 
+## Rim Size Filtering ← **NEXT**
+*Let users filter by wheel/rim diameter across `/blems`, `/find`, and subscriptions.*
+
+### Why
+Wheel diameter is a hard constraint — a 16" rim can't use a 17" tire. Searching
+by overall diameter (`size_min`) is useful, but users with a specific wheel size
+need to narrow by rim diameter too. Currently there's no way to express "show me
+all 35" tires that fit a 17" rim."
+
+### What changes
+
+**Data layer**
+
+1. Add `rim_diam` column (`REAL`) to `tires` table via idempotent migration in
+   `src/db/client.js`. Add `idx_tires_rim_diam` index.
+
+2. Add `parseRimDiam(sizeStr)` to `src/utils/tires.js`. Handles all formats:
+   ```
+   35x12.50R18LT  → 18
+   245/55R19      → 19
+   14/42-17       → 17  (number after the dash)
+   17.5/50-24     → 24
+   265/75R16      → 16
+   ```
+
+3. `upsertActiveTire` in `src/db/repository.js` derives and stores `rim_diam`
+   from the size string if the scraper doesn't provide it — same pattern as
+   `overall_diam` derivation added in the sizing bugfix.
+
+4. `getActiveTires` gains `rimMin` / `rimMax` post-filter parameters.
+
+5. `searchTires` gains `rim` exact-match parameter (integer comparison using
+   `Math.round(d) === rim`, mirroring the `size` filter).
+
+**Commands**
+
+6. `/blems` — add `rim_min` and `rim_max` integer options.
+
+7. `/find` — add `rim` integer option (exact rim diameter).
+
+8. `/subscribe` — add `rim_min` integer option to subscription criteria.
+
+**Subscriptions**
+
+9. Add `rim_min` column to `subscriptions` table (nullable integer, migration in
+   `src/db/client.js`).
+
+10. `tireMatchesSubscription` in `src/subscriptions.js` checks `rim_min` against
+    `tire.rim_diam ?? parseRimDiam(tire.size)`.
+
+### Schema additions
+```sql
+-- tires table (migration, not new table)
+ALTER TABLE tires ADD COLUMN rim_diam REAL;
+CREATE INDEX idx_tires_rim_diam ON tires(rim_diam);
+
+-- subscriptions table (migration)
+ALTER TABLE subscriptions ADD COLUMN rim_min INTEGER;
+```
+
+### No new commands — all changes extend existing ones.
+
+---
+
 ## Phase 7 — Cross-Site Inventory Search
 *Search for a tire model or size across every source simultaneously, not just blems.*
 
@@ -752,14 +816,15 @@ Phase 3  (Subscriptions)     ✅ Done
 Phase 4  (Pinned watches)    ✅ Done — merged into /subscribe
 Phase 5  (Data discovery)    ✅ Done — all source docs + unified model written
 Phase 6  (More scrapers)     ✅ Done (no-proxy sources) — TreadWright + TireMart live
-Phase 7  (Cross-site search) ← next; 2 live scrapers is enough to be useful
+Rim filtering                ← NEXT — rim_diam column, parseRimDiam, extend /blems + /find + /subscribe
+Phase 7  (Cross-site search)   after rim filtering; 2 live scrapers is enough to be useful
 Phase 8  (History/Stats)     ✅ Done — schema + /history + /stats commands
-Phase 9  (Admin)             ← next after Phase 7 (or in parallel, no hard dep)
-Phase 10 (Plan polish)       ← catchall; pull items earlier as needed
+Phase 9  (Admin)               after Phase 7 (or in parallel, no hard dep)
+Phase 10 (Plan polish)         catchall; pull items earlier as needed
 ```
 
-Next up: Phase 7 (`/find` command) and Phase 9 (`/admin` commands) can be
-built in either order — no hard dependency between them.
+Next up: Rim size filtering (see section above), then Phase 7 (`/find` live
+cross-site scrape) and Phase 9 (`/admin` commands) can be built in either order.
 
 ---
 

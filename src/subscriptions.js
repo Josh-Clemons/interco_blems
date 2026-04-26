@@ -9,6 +9,7 @@
  *   sub.brand          — case-insensitive substring; null = any
  *   sub.size           — exact size string match; null = any
  *   sub.size_min       — min diameter in inches; null = no minimum
+ *   sub.rim_min        — min rim diameter in inches; null = no minimum
  *   sub.price_max      — max price; null = no ceiling
  *   sub.notify_changed — also alert on qty/price changes to matching tires
  *   sub.notify_removed — also alert when a matching tire disappears
@@ -18,7 +19,7 @@
  * experience). When sku is null it behaves like a broad subscription.
  */
 
-const { parseDiameter } = require('./utils/tires');
+const { parseDiameter, parseRimDiam } = require('./utils/tires');
 
 /**
  * Returns true iff the given tire passes every filter on the subscription.
@@ -41,8 +42,13 @@ function tireMatchesSubscription(tire, sub) {
     }
 
     if (sub.size_min != null) {
-        const d = parseDiameter(tire.size);
+        const d = tire.overall_diam ?? parseDiameter(tire.size);
         if (d == null || d < sub.size_min) return false;
+    }
+
+    if (sub.rim_min != null) {
+        const d = tire.rim_diam ?? parseRimDiam(tire.size);
+        if (d == null || d < sub.rim_min) return false;
     }
 
     if (sub.price_max != null) {
@@ -57,7 +63,7 @@ function tireMatchesSubscription(tire, sub) {
  * guard track_changes / track_removed from firing on firehose subscriptions.
  */
 function hasNarrowingFilter(sub) {
-    return !!(sub.sku || sub.brand || sub.size || sub.size_min != null);
+    return !!(sub.sku || sub.brand || sub.size || sub.size_min != null || sub.rim_min != null);
 }
 
 /**

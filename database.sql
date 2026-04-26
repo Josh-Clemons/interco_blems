@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tires (
     weight_oz       INTEGER,
     tread_depth_32  INTEGER,
     overall_diam    REAL,
+    rim_diam        REAL,
     section_width   REAL,
     utqg_wear       INTEGER,
     utqg_traction   TEXT,
@@ -41,13 +42,15 @@ CREATE TABLE IF NOT EXISTS tires (
     UNIQUE(source, sku)
 );
 
-CREATE INDEX IF NOT EXISTS idx_tires_source   ON tires(source);
-CREATE INDEX IF NOT EXISTS idx_tires_brand    ON tires(brand);
-CREATE INDEX IF NOT EXISTS idx_tires_size     ON tires(size);
-CREATE INDEX IF NOT EXISTS idx_tires_blem     ON tires(is_blem);
-CREATE INDEX IF NOT EXISTS idx_tires_active   ON tires(is_active);
-CREATE INDEX IF NOT EXISTS idx_tires_category ON tires(category);
-CREATE INDEX IF NOT EXISTS idx_tires_price    ON tires(price_cents);
+CREATE INDEX IF NOT EXISTS idx_tires_source       ON tires(source);
+CREATE INDEX IF NOT EXISTS idx_tires_brand        ON tires(brand);
+CREATE INDEX IF NOT EXISTS idx_tires_size         ON tires(size);
+CREATE INDEX IF NOT EXISTS idx_tires_blem         ON tires(is_blem);
+CREATE INDEX IF NOT EXISTS idx_tires_active       ON tires(is_active);
+CREATE INDEX IF NOT EXISTS idx_tires_category     ON tires(category);
+CREATE INDEX IF NOT EXISTS idx_tires_price        ON tires(price_cents);
+CREATE INDEX IF NOT EXISTS idx_tires_overall_diam ON tires(overall_diam);
+CREATE INDEX IF NOT EXISTS idx_tires_rim_diam     ON tires(rim_diam);
 
 -- Audit log of every email sent.
 CREATE TABLE IF NOT EXISTS email_log (
@@ -78,6 +81,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     brand          TEXT,                        -- NULL = any brand (case-insensitive substring)
     size           TEXT,                        -- NULL = any size; set for exact-size watches
     size_min       REAL,                        -- NULL = no minimum diameter (inches)
+    rim_min        INTEGER,                     -- NULL = no minimum rim diameter (inches)
     price_max      REAL,                        -- NULL = no maximum price
     notify_dm      INTEGER NOT NULL DEFAULT 1,  -- 1 = DM, 0 = post to notify_channel
     notify_channel TEXT,                        -- channel ID used when notify_dm = 0

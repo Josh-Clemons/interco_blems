@@ -19,11 +19,15 @@ function getDb() {
 
     // Idempotent column migrations for tables that predate new features.
     // SQLite lacks ADD COLUMN IF NOT EXISTS so we check pragma first.
+    applyColumnMigrations(_db, 'tires', [
+        { name: 'rim_diam', ddl: "ADD COLUMN rim_diam REAL" },
+    ]);
     applyColumnMigrations(_db, 'subscriptions', [
         { name: 'sku',             ddl: "ADD COLUMN sku TEXT" },
         { name: 'size',            ddl: "ADD COLUMN size TEXT" },
         { name: 'notify_changed',  ddl: "ADD COLUMN notify_changed INTEGER NOT NULL DEFAULT 0" },
         { name: 'notify_removed',  ddl: "ADD COLUMN notify_removed INTEGER NOT NULL DEFAULT 0" },
+        { name: 'rim_min',         ddl: "ADD COLUMN rim_min INTEGER" },
     ]);
 
 
@@ -61,13 +65,15 @@ function getDb() {
 
     // v2 indexes (safe to run repeatedly)
     _db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_tires_source   ON tires(source);
-        CREATE INDEX IF NOT EXISTS idx_tires_brand    ON tires(brand);
-        CREATE INDEX IF NOT EXISTS idx_tires_size     ON tires(size);
-        CREATE INDEX IF NOT EXISTS idx_tires_blem     ON tires(is_blem);
-        CREATE INDEX IF NOT EXISTS idx_tires_active   ON tires(is_active);
-        CREATE INDEX IF NOT EXISTS idx_tires_category ON tires(category);
-        CREATE INDEX IF NOT EXISTS idx_tires_price    ON tires(price_cents);
+        CREATE INDEX IF NOT EXISTS idx_tires_source      ON tires(source);
+        CREATE INDEX IF NOT EXISTS idx_tires_brand       ON tires(brand);
+        CREATE INDEX IF NOT EXISTS idx_tires_size        ON tires(size);
+        CREATE INDEX IF NOT EXISTS idx_tires_blem        ON tires(is_blem);
+        CREATE INDEX IF NOT EXISTS idx_tires_active      ON tires(is_active);
+        CREATE INDEX IF NOT EXISTS idx_tires_category    ON tires(category);
+        CREATE INDEX IF NOT EXISTS idx_tires_price       ON tires(price_cents);
+        CREATE INDEX IF NOT EXISTS idx_tires_overall_diam ON tires(overall_diam);
+        CREATE INDEX IF NOT EXISTS idx_tires_rim_diam     ON tires(rim_diam);
     `);
 
     return _db;

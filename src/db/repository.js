@@ -1,5 +1,5 @@
 const { getDb } = require('./client');
-const { parseDiameter, parsePrice } = require('../utils/tires');
+const { parseDiameter, parseRimDiam, parsePrice } = require('../utils/tires');
 
 // ---------------------------------------------------------------------------
 // Search
@@ -14,11 +14,12 @@ const { parseDiameter, parsePrice } = require('../utils/tires');
  * @param {object} [filters]
  *   source             - limit to one source (optional)
  *   size               - exact overall diameter in inches (optional, post-filter)
+ *   rim                - exact rim diameter in inches (optional, post-filter)
  *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  * @returns {object[]}
  */
 function searchTires(query, filters = {}) {
-    const { source, size, includeOutOfStock = false } = filters;
+    const { source, size, rim, includeOutOfStock = false } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
@@ -42,7 +43,13 @@ function searchTires(query, filters = {}) {
     if (size != null) {
         rows = rows.filter(r => {
             const d = r.overall_diam || parseDiameter(r.size);
-            return d != null && d === size;
+            return d != null && Math.round(d) === size;
+        });
+    }
+    if (rim != null) {
+        rows = rows.filter(r => {
+            const d = r.rim_diam || parseRimDiam(r.size);
+            return d != null && Math.round(d) === rim;
         });
     }
 
@@ -69,6 +76,8 @@ function getTiresBySource(source) {
  *   brand              - case-insensitive substring match (optional)
  *   sizeMin            - min overall diameter in inches (optional)
  *   sizeMax            - max overall diameter in inches (optional)
+ *   rimMin             - min rim diameter in inches (optional)
+ *   rimMax             - max rim diameter in inches (optional)
  *   priceMax           - max price in dollars (optional)
  *   isBlem             - true/false to filter by blem status (optional)
  *   category           - exact category match (optional)
@@ -76,7 +85,7 @@ function getTiresBySource(source) {
  *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  */
 function getActiveTires(filters = {}) {
-    const { source, brand, sizeMin, sizeMax, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
+    const { source, brand, sizeMin, sizeMax, rimMin, rimMax, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
@@ -109,6 +118,18 @@ function getActiveTires(filters = {}) {
             return d != null && d <= sizeMax;
         });
     }
+    if (rimMin != null) {
+        rows = rows.filter(r => {
+            const d = r.rim_diam || parseRimDiam(r.size);
+            return d != null && d >= rimMin;
+        });
+    }
+    if (rimMax != null) {
+        rows = rows.filter(r => {
+            const d = r.rim_diam || parseRimDiam(r.size);
+            return d != null && d <= rimMax;
+        });
+    }
 
     return rows;
 }
@@ -138,7 +159,7 @@ const TIRE_COLS = [
     'is_blem', 'quantity_raw', 'quantity_n', 'stock_state',
     'price_cents', 'msrp_cents', 'sale_price_cents',
     'load_index', 'speed_rating', 'load_range', 'ply',
-    'weight_oz', 'tread_depth_32', 'overall_diam', 'section_width',
+    'weight_oz', 'tread_depth_32', 'overall_diam', 'rim_diam', 'section_width',
     'utqg_wear', 'utqg_traction', 'utqg_temp', 'three_pms',
     'product_url', 'image_url', 'extra',
 ];
@@ -167,6 +188,13 @@ function upsertActiveTire(source, tire) {
     for (const col of TIRE_COLS) {
         if (col === 'source') continue;
         row[col] = tire[col] ?? null;
+    }
+    // Derive overall_diam and rim_diam from the size string if the scraper didn't provide them
+    if (row.overall_diam == null && row.size) {
+        row.overall_diam = parseDiameter(row.size) ?? null;
+    }
+    if (row.rim_diam == null && row.size) {
+        row.rim_diam = parseRimDiam(row.size) ?? null;
     }
     // Serialize extra to JSON if it's an object
     if (row.extra && typeof row.extra === 'object') {
@@ -255,10 +283,10 @@ function upsertUser(id, username) {
 function createSubscription(sub) {
     const info = getDb().prepare(`
         INSERT INTO subscriptions
-            (user_id, source, sku, brand, size, size_min, price_max,
+            (user_id, source, sku, brand, size, size_min, rim_min, price_max,
              notify_dm, notify_channel, notify_changed, notify_removed)
         VALUES
-            (@user_id, @source, @sku, @brand, @size, @size_min, @price_max,
+            (@user_id, @source, @sku, @brand, @size, @size_min, @rim_min, @price_max,
              @notify_dm, @notify_channel, @notify_changed, @notify_removed)
     `).run({
         user_id: sub.user_id,
@@ -267,6 +295,7 @@ function createSubscription(sub) {
         brand: sub.brand ?? null,
         size: sub.size ?? null,
         size_min: sub.size_min ?? null,
+        rim_min: sub.rim_min ?? null,
         price_max: sub.price_max ?? null,
         notify_dm: sub.notify_dm ? 1 : 0,
         notify_channel: sub.notify_channel ?? null,

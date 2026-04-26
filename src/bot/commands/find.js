@@ -61,6 +61,12 @@ module.exports = {
                 .setMinValue(10)
                 .setMaxValue(60)
         )
+        .addIntegerOption(o =>
+            o.setName('rim')
+                .setDescription('Narrow to a specific rim diameter in inches (e.g. 17)')
+                .setMinValue(10)
+                .setMaxValue(30)
+        )
         .addStringOption(o =>
             o.setName('source')
                 .setDescription('Limit to one data source')
@@ -74,16 +80,18 @@ module.exports = {
     async execute(interaction) {
         const query           = interaction.options.getString('query');
         const size            = interaction.options.getInteger('size') ?? undefined;
+        const rim             = interaction.options.getInteger('rim')  ?? undefined;
         const source          = interaction.options.getString('source') || undefined;
         const includeOutOfStock = interaction.options.getBoolean('include_oos') ?? false;
 
-        const allResults = searchTires(query, { source, size, includeOutOfStock });
+        const allResults = searchTires(query, { source, size, rim, includeOutOfStock });
 
         if (allResults.length === 0) {
             const hints = [
                 `Try a shorter term — \`/find query:claw\` instead of a full size string.`,
                 `Use \`/blems\` to browse all available blem inventory without filtering.`,
                 size   ? `The size filter requires an exact diameter match — try without \`size:${size}\` to broaden results.` : null,
+                rim    ? `The rim filter requires an exact rim match — try without \`rim:${rim}\` to broaden results.` : null,
                 source ? `Try without \`source:${source}\` to search all sites.` : null,
                 !includeOutOfStock ? `Add \`include_oos:True\` to also see out-of-stock tires.` : null,
             ].filter(Boolean);

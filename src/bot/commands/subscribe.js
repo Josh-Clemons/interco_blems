@@ -23,6 +23,7 @@ module.exports = {
         .addStringOption(o  => o.setName('brand').setDescription('Brand substring match (e.g. bogger)'))
         .addStringOption(o  => o.setName('size').setDescription('Exact tire size (e.g. 37x12.50R17LT)'))
         .addIntegerOption(o => o.setName('size_min').setDescription('Minimum tire diameter in inches (e.g. 37)'))
+        .addIntegerOption(o => o.setName('rim_min').setDescription('Minimum rim diameter in inches (e.g. 17)'))
         .addNumberOption(o  => o.setName('price_max').setDescription('Maximum price in dollars'))
         .addStringOption(o  => o.setName('source').setDescription('Only this source (e.g. interco)'))
         .addBooleanOption(o => o.setName('track_changes').setDescription('Also alert on qty/price changes (requires a narrowing filter).'))
@@ -50,11 +51,12 @@ module.exports = {
 
         const draft = {
             user_id:        user.id,
-            source:         interaction.options.getString('source') || null,
-            sku:            interaction.options.getString('sku')    || null,
-            brand:          interaction.options.getString('brand')  || null,
-            size:           interaction.options.getString('size')   || null,
+            source:         interaction.options.getString('source')  || null,
+            sku:            interaction.options.getString('sku')     || null,
+            brand:          interaction.options.getString('brand')   || null,
+            size:           interaction.options.getString('size')    || null,
             size_min:       interaction.options.getInteger('size_min'),
+            rim_min:        interaction.options.getInteger('rim_min'),
             price_max:      interaction.options.getNumber('price_max'),
             notify_dm:      dmFlag,
             notify_channel,
@@ -99,6 +101,7 @@ function describeSub(sub) {
     if (sub.brand)            parts.push(`brand:${sub.brand}`);
     if (sub.size)             parts.push(`size:${sub.size}`);
     if (sub.size_min != null) parts.push(`≥${sub.size_min}"`);
+    if (sub.rim_min  != null) parts.push(`rim≥${sub.rim_min}"`);
     if (sub.price_max != null) parts.push(`≤$${sub.price_max}`);
     if (sub.source)           parts.push(`source:${sub.source}`);
     return parts.join(', ');
