@@ -15,6 +15,7 @@ const runner = require('./src/runner');
 const { getClient, login } = require('./src/bot/client');
 const { registerCommands } = require('./src/bot/commands');
 const { attachInteractionHandler } = require('./src/bot/interactions');
+const { attachChatChannelHandler } = require('./src/bot/chatChannel');
 
 const ALERTS_ENABLED      = (process.env.ALERTS_ENABLED ?? 'true').toLowerCase() !== 'false';
 const scheduledScrapers   = scrapers.filter(s => !s.nightly);
@@ -284,6 +285,7 @@ async function main() {
     const client = getClient();
 
     attachInteractionHandler(client);
+    attachChatChannelHandler(client);
 
     client.once('clientReady', async () => {
         log.info(`[bot] Logged in as ${client.user.tag}`);

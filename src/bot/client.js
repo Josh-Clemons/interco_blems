@@ -13,10 +13,13 @@ function getClient() {
     if (_client) return _client;
 
     _client = new Client({
-        // Minimum intents needed for slash commands and sending messages.
-        // Guild intent is required so the bot can resolve guild/channel context.
+        // GuildMessages + MessageContent are privileged intents required for the
+        // chat channel feature (reading user messages). Enable both under
+        // Discord Developer Portal → Bot → Privileged Gateway Intents.
         intents: [
             GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.MessageContent,
         ],
     });
 

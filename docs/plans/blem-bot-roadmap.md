@@ -973,32 +973,120 @@ Per-user subscriptions already support non-blem hits: `tireMatchesSubscription` 
 ---
 
 ## Phase 12 — Natural Language Search (LLM-assisted)
-*Add natural-language query support on top of the backend tire index.*
+*Add natural-language query support on top of the backend tire index, with a dedicated chat channel for threaded conversation.*
 
 ### Goal
 Allow users to ask in plain language (e.g. "show me 37s under $500 for 17-inch rims,
 prefer in-stock blems") and map that query to structured filters + ranked results.
+Support multi-turn conversation in a dedicated Discord channel as the primary UX; `/ask`
+as the fallback for users in other channels.
 
-### High-level approach
-- Keep SQLite as source of truth.
-- Add NL parser layer that converts text → structured query object:
-  - source, brand/model tokens, size, rim, price ceiling, blem-only toggle,
-    in-stock preference/requirement, optional sort preference.
-- Execute structured query via existing repository methods (`searchTires`, `getActiveTires`),
-  then apply deterministic post-ranking.
+### Interaction model
 
-### Interfaces
-- Option A: extend `/find` with `nl_query` string option.
-- Option B: add `/ask` command dedicated to NL search.
+**Dedicated chat channel (primary)**
+The bot watches a designated channel (`DISCORD_CHAT_CHANNEL_ID` env var). When a user
+sends a message there, the bot opens a thread off that message so each conversation is
+isolated and visible to other server members. Follow-up messages inside the thread
+continue the conversation (multi-turn, up to a reasonable depth).
 
-### LLM integration notes
-- Keep prompts and parsing strict (JSON schema output).
-- Fallback behavior when model parse fails: safe lexical search on raw query.
-- Log parse decisions for debugging and prompt iteration.
+This mode is always-on — no slash command required. The bot should reply in the thread
+rather than the channel itself to keep the channel readable.
+
+**`/ask` command (fallback)**
+Available in any channel. Single-turn: user asks a question, bot replies ephemerally or
+in-channel with structured results. Does not open a thread. This is the entry point for
+users in channels where the dedicated chat channel isn't accessible or convenient.
+
+`/find` is **not affected** — it remains a pure keyword/filter command with no LLM involvement.
+
+### LLM provider
+Use **GitHub Models** (`models.inference.ai.azure.com`) — an OpenAI-compatible endpoint
+available through a GitHub Copilot subscription. Auth is a GitHub Personal Access Token
+(Settings → Developer settings → Personal access tokens → Fine-grained tokens, no special
+scopes needed). Configure via env:
+
+```
+GITHUB_MODELS_API_KEY=<github-pat>
+GITHUB_MODELS_API_BASE=https://models.inference.ai.azure.com   # default, override if needed
+GITHUB_MODELS_MODEL=gpt-4o-mini                                 # cheap, fast, effective for structured extraction + conversation
+```
+
+The LLM client uses the OpenAI SDK pointed at the GitHub Models base URL. If the endpoint
+or model name changes, only env vars need updating — no code changes.
+
+Model choice rationale: gpt-4o-mini is sufficient for structured JSON extraction from short
+queries and general conversational replies. No need for a frontier model here.
+
+### NL → structured filters
+
+The LLM receives the user's message and returns a JSON object that maps directly to
+`getActiveTires()` filter arguments. Use `getActiveTires()` as the primary DB call.
+If a new repo method is needed (e.g. to combine keyword text search with structured
+filters more cleanly), introduce it then — do not over-engineer upfront.
+
+**LLM output schema:**
+```json
+{
+  "keyword":   "bogger",       // brand/model substring for text match; null if purely numeric
+  "source":    null,           // exact source name or null
+  "sizeMin":   37,             // overall diameter lower bound (inches) or null
+  "sizeMax":   37,             // overall diameter upper bound (inches) or null
+  "rim":       17,             // exact rim diameter (inches) or null
+  "priceMax":  500,            // max price in dollars or null
+  "isBlem":    null,           // true = blems only, false = standard only, null = both
+  "stockPref": "in_stock"      // "in_stock" | "any" | null  ("in_stock" → excludes out_of_stock)
+}
+```
+
+Prompt must instruct the model to return only this JSON with no surrounding prose.
+On parse failure (malformed JSON, missing required keys), fall back to a lexical
+`searchTires()` call using the raw query string. Log failures for prompt iteration.
+
+### Result ranking
+
+After DB query, sort results deterministically:
+1. Blem before standard (`is_blem` desc)
+2. In-stock before low-stock (`stock_state` — in_stock > low_stock > unknown)
+3. Price ascending (`price_cents` asc)
+
+### Discord interaction requirements
+
+**`/ask` command:** call `interaction.deferReply()` immediately (before the LLM call)
+to satisfy Discord's 3-second response deadline. Use `interaction.editReply()` with
+the final embed. `/find` is unaffected — it remains synchronous.
+
+**Chat channel thread mode:** normal message replies are not subject to the 3-second
+slash-command deadline, but the bot should still respond promptly. Typing indicator
+(`channel.sendTyping()`) while the LLM call is in flight gives users feedback.
+
+### Caching
+Not implemented initially. Monitor token usage in production and add an in-memory LRU
+cache on the query string if cost becomes a concern.
+
+### New env vars
+```
+DISCORD_CHAT_CHANNEL_ID=    # channel the bot watches for NL chat; omit to disable chat-channel mode
+GITHUB_MODELS_API_KEY=      # GitHub PAT (fine-grained, no special scopes needed)
+GITHUB_MODELS_API_BASE=     # defaults to https://models.inference.ai.azure.com
+GITHUB_MODELS_MODEL=        # defaults to gpt-4o-mini
+```
+
+### New files
+```
+src/
+  llm/
+    client.js       — OpenAI SDK instance pointed at Copilot endpoint
+    parseQuery.js   — NL string → structured filter JSON (prompt + parse + fallback)
+  bot/
+    commands/
+      ask.js        — /ask slash command
+    chatChannel.js  — message listener for the dedicated chat channel + thread logic
+```
 
 ### Validation
-- Golden-query fixture set (10–20 NL prompts) with expected parsed filters.
-- Regression tests around ambiguous rim/size phrases and stock intent.
+- Golden-query fixture set (10–20 NL prompts) with expected parsed filter objects.
+- Unit tests for `parseQuery.js` using mocked LLM responses (valid JSON, malformed, missing keys).
+- Regression tests around ambiguous rim/size phrases and stock-preference wording.
 
 ---
 
@@ -1047,7 +1135,7 @@ Phase 8   (History/Stats)          ✅ Done — schema + /history + /stats comma
 Phase 9   (Bug fixes)              ✅ Done — SimpleTire price + size extraction, TreadWright size regex, /find source search, /find overflow hint
 Phase 10  (README/docs)            ⏳ Open — author full README + operations docs
 Phase 11  (Admin)                  ✅ Done — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
-Phase 12  (NL search)              ⏳ Planned — LLM-assisted NL→structured query mapping
+Phase 12  (NL search)              ⏳ Design locked — chat channel + /ask, GitHub Models endpoint, gpt-4o-mini, getActiveTires()
 Phase 13  (Plan polish)            ⏳ Ongoing catchall
 Phase 14  (Scraper health)         ⏳ Open — fixture regression tests + live smoke script
 Phase 15  (Full catalog scraping)  ⏳ Open — expand interco + treadwright to non-blem inventory
@@ -1081,6 +1169,12 @@ src/
       history.js
       stats.js
       admin.js
+      ask.js           (Phase 12 — /ask slash command)
+  llm/
+    client.js          (Phase 12 — OpenAI SDK → GitHub Copilot endpoint)
+    parseQuery.js      (Phase 12 — NL string → structured filter JSON)
+  bot/
+    chatChannel.js     (Phase 12 — dedicated chat channel listener + thread logic)
   scrapers/
     index.js
     interco.js
@@ -1105,6 +1199,7 @@ scripts/
 test/
   tracker.test.js
   subscriptions.test.js
+  llm/parseQuery.test.js  (Phase 12 — golden-query fixtures, parse failure fallback)
   db/searchTires.test.js
   notifier/discord.test.js
   scrapers/interco.test.js
