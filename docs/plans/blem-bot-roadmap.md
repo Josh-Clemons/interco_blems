@@ -1197,16 +1197,16 @@ Public alert stock suppression     ✅ Done — out-of-stock/unavailable tires s
 Phase 7   (Backend search)         ✅ In place — `/find` stays DB-backed (no live site search)
 Phase 8   (History/Stats)          ✅ Done — schema + /history + /stats commands
 Phase 9   (Bug fixes)              ✅ Done — SimpleTire price + size extraction, TreadWright size regex, /find source search, /find overflow hint
-Phase 10  (README/docs)            ⏳ Open — author full README + operations docs
+Phase 10  (README/docs)            ✅ Done — README written
 Phase 11  (Admin)                  ✅ Done — /admin scrape|sources|runs|errors + MANAGE_GUILD gate
-Phase 12  (NL search)              ⏳ Design locked — chat channel + /ask, GitHub Models endpoint, gpt-4o-mini, getActiveTires()
+Phase 12  (NL search)              ✅ Done — /ask + chat channel listener + GitHub Models (gpt-4o-mini) + parseQuery golden-query tests
 Phase 13  (Plan polish)            ⏳ Ongoing catchall
-Phase 14  (Scraper health)         ⏳ Open — fixture regression tests + live smoke script
+Phase 14  (Scraper health)         ✅ Done — fixture regression tests (tiremart, treadwright, simpletire) + smoke script
 Phase 15  (Full catalog scraping)  ⏳ Open — expand interco + treadwright to non-blem inventory
 Phase 16  (Feedback)               ⏳ Open — inline result ratings + /feedback command
 ```
 
-Immediate next step: Phase 14 (scraper health tests) or Phase 16 (feedback). Phase 15 (full catalog expansion) after that.
+Immediate next step: Phase 15 (full catalog scraping) or Phase 16 (feedback).
 
 ---
 

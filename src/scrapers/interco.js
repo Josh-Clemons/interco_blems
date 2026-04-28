@@ -8,13 +8,8 @@ const URL = 'https://www.intercotire.com/blem-list';
 // happens later — the public-feed Discord alert applies PUBLIC_ALERT_MIN_DIAMETER
 // (default 35"), and per-user subscriptions apply their own filters.
 
-async function scrape() {
-    const res = await fetch(URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${URL}`);
-
-    const html = await res.text();
+function parseHtml(html) {
     const $ = cheerio.load(html);
-
     const tires = [];
 
     $('tbody tr').each((_, row) => {
@@ -58,4 +53,11 @@ async function scrape() {
     return tires;
 }
 
-module.exports = { name: NAME, url: URL, scrape };
+async function scrape() {
+    const res = await fetch(URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${URL}`);
+    const html = await res.text();
+    return parseHtml(html);
+}
+
+module.exports = { name: NAME, url: URL, scrape, _parseHtml: parseHtml };

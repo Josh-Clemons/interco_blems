@@ -468,4 +468,4 @@ async function scrape({ full = false } = {}) {
     return tires;
 }
 
-module.exports = { name: NAME, url: URL, scrape, nightly: true };
+module.exports = { name: NAME, url: URL, scrape, nightly: true, _parseSkuPage: parseSkuPage };

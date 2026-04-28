@@ -20,15 +20,8 @@ const LOAD_SPEED_RE = /,\s*(\d+)(?:\/\d+)?([A-Z])\b/;
 const LOAD_RANGE_RE = /([A-Z])\s*\((\d+)\s*Ply\)/;
 const PRICE_RE = /\$?([\d,]+\.\d{2})/;
 
-async function scrape() {
-    const res = await fetch(URL, {
-        headers: { 'User-Agent': 'BlemBot/1.0 (+tire-tracking-bot)' },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${URL}`);
-
-    const html = await res.text();
+function parseHtml(html) {
     const $ = cheerio.load(html);
-
     const tires = [];
 
     // BigCommerce listing: each product is a <li class="product"><article class="card" data-sku="...">
@@ -142,4 +135,13 @@ async function scrape() {
     return tires;
 }
 
-module.exports = { name: NAME, url: URL, scrape };
+async function scrape() {
+    const res = await fetch(URL, {
+        headers: { 'User-Agent': 'BlemBot/1.0 (+tire-tracking-bot)' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${URL}`);
+    const html = await res.text();
+    return parseHtml(html);
+}
+
+module.exports = { name: NAME, url: URL, scrape, _parseHtml: parseHtml };

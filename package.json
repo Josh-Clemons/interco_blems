@@ -7,6 +7,7 @@
     "start": "node index.js",
     "dev": "node index.js",
     "test": "jest --testPathPattern=test/",
+    "test:live": "node scripts/refresh-fixtures.js && jest --testPathPattern=test/",
     "simple-tire": "node index.js --simple-tire"
   },
   "author": "",

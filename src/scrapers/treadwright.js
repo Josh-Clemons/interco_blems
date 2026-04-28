@@ -76,8 +76,7 @@ function getLoadRange(tags) {
     return null;
 }
 
-async function scrape() {
-    const products = await fetchAllProducts();
+function parseProducts(products) {
     const tires = [];
 
     for (const product of products) {
@@ -147,4 +146,9 @@ async function scrape() {
     return tires;
 }
 
-module.exports = { name: NAME, url: URL, scrape };
+async function scrape() {
+    const products = await fetchAllProducts();
+    return parseProducts(products);
+}
+
+module.exports = { name: NAME, url: URL, scrape, _parseProducts: parseProducts };

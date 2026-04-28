@@ -1,11 +1,12 @@
-const cheerio = require('cheerio');
+const { _parseHtml } = require('../../src/scrapers/interco');
 
-// Minimal HTML fixture that mimics the Interco blem-list table structure.
-function makeRow(sku, size, price = '$200.00', qty = '4') {
+const VALID_STOCK_STATES = ['in_stock', 'low_stock', 'out_of_stock', 'unknown'];
+
+function makeRow(sku, size, price = '$200.00', qty = '8') {
     return `
     <tr>
       <td headers="view-views-conditional-field-1-table-column"></td>
-      <td headers="view-views-conditional-field-table-column"><a href="/blem/x">${sku}</a></td>
+      <td headers="view-views-conditional-field-table-column"><a href="/blem/${sku}">${sku}</a></td>
       <td headers="view-title-table-column">${sku} ${size}</td>
       <td headers="view-field-brand-table-column">TestBrand</td>
       <td headers="view-field-size-table-column">${size}</td>
@@ -14,62 +15,82 @@ function makeRow(sku, size, price = '$200.00', qty = '4') {
     </tr>`;
 }
 
-// Inline the parsing logic from interco.js so we can test it without a real fetch.
-function parseRows(html) {
-    const $ = cheerio.load(html);
-    const tires = [];
-
-    $('tbody tr').each((_, row) => {
-        const $row = $(row);
-        const sku   = $row.find('td[headers="view-views-conditional-field-table-column"] a').text().trim();
-        const title = $row.find('td[headers="view-title-table-column"]').text().trim();
-        const brand = $row.find('td[headers="view-field-brand-table-column"]').text().trim();
-        const size  = $row.find('td[headers="view-field-size-table-column"]').text().trim();
-        const qty   = $row.find('td[headers="view-field-stock-table-column"] span').text().trim();
-        const price = $row.find('td[headers="view-price-number-table-column"]').text().trim();
-        if (sku && size) tires.push({ sku, title, brand, size, quantity: qty, price });
-    });
-    return tires;
+function wrap(rows) {
+    return `<table><tbody>${rows}</tbody></table>`;
 }
 
 describe('Interco HTML parser', () => {
     test('parses a table row correctly', () => {
-        const html = `<table><tbody>${makeRow('XBOG-5420', '54x19.5/20LT', '$888.00', '4')}</tbody></table>`;
-        const tires = parseRows(html);
+        const html = wrap(makeRow('XBOG-5420', '54x19.5/20LT', '$888.00', '8'));
+        const tires = _parseHtml(html);
         expect(tires).toHaveLength(1);
-        expect(tires[0].sku).toBe('XBOG-5420');
-        expect(tires[0].size).toBe('54x19.5/20LT');
-        expect(tires[0].price).toBe('$888.00');
-        expect(tires[0].quantity).toBe('4');
-        expect(tires[0].brand).toBe('TestBrand');
+        const t = tires[0];
+        expect(t.sku).toBe('XBOG-5420');
+        expect(t.size).toBe('54x19.5/20LT');
+        expect(t.price_cents).toBe(88800);
+        expect(t.quantity_n).toBe(8);
+        expect(t.brand).toBe('TestBrand');
+        expect(t.is_blem).toBe(1);
+        expect(t.product_url).toBe('https://www.intercotire.com/blem/XBOG-5420');
     });
 
     test('parses multiple rows', () => {
-        const html = `<table><tbody>
-            ${makeRow('X001', '37x12.5R17')}
-            ${makeRow('X002', '40x13.5R17')}
-        </tbody></table>`;
-        const tires = parseRows(html);
-        expect(tires).toHaveLength(2);
+        const html = wrap(makeRow('X001', '37x12.5R17') + makeRow('X002', '40x13.5R17'));
+        expect(_parseHtml(html)).toHaveLength(2);
+    });
+
+    test('v2 contract: required fields non-null and stock_state valid', () => {
+        const html = wrap(
+            makeRow('A001', '35x12.5R17', '$299.00', '10') +
+            makeRow('A002', '37x13.5R18', '$349.00', '2') +
+            makeRow('A003', '40x13.5R17', '$399.00', '0')
+        );
+        const tires = _parseHtml(html);
+        expect(tires).toHaveLength(3);
+        for (const t of tires) {
+            expect(t.sku).toBeTruthy();
+            expect(t.size).toBeTruthy();
+            expect(t.price_cents).toBeGreaterThan(0);
+            expect(VALID_STOCK_STATES).toContain(t.stock_state);
+        }
+    });
+
+    test('stock_state derived correctly from quantity', () => {
+        const html = wrap(
+            makeRow('S001', '35x12.5R17', '$200.00', '10') +  // in_stock (> 4)
+            makeRow('S002', '35x12.5R17', '$200.00', '2') +   // low_stock (1-4)
+            makeRow('S003', '35x12.5R17', '$200.00', '0')     // out_of_stock
+        );
+        const tires = _parseHtml(html);
+        expect(tires[0].stock_state).toBe('in_stock');
+        expect(tires[1].stock_state).toBe('low_stock');
+        expect(tires[2].stock_state).toBe('out_of_stock');
+    });
+
+    test('missing price yields null price_cents', () => {
+        const html = wrap(makeRow('P001', '37x12.5R17', '', '5'));
+        const tires = _parseHtml(html);
+        expect(tires[0].price_cents).toBeNull();
+    });
+
+    test('non-numeric quantity yields unknown stock_state', () => {
+        const html = wrap(makeRow('Q001', '35x12.5R17', '$200.00', 'Call'));
+        const tires = _parseHtml(html);
+        expect(tires[0].quantity_n).toBeNull();
+        expect(tires[0].stock_state).toBe('unknown');
+    });
+
+    test('skips rows with missing sku or size', () => {
+        const noSku = `<tr>
+            <td headers="view-views-conditional-field-table-column"></td>
+            <td headers="view-field-size-table-column">35x12.5R17</td>
+        </tr>`;
+        const html = wrap(noSku);
+        expect(_parseHtml(html)).toHaveLength(0);
     });
 
     test('includes small tires — scraper no longer filters by size', () => {
-        const html = `<table><tbody>
-            ${makeRow('X001', '28x10R14')}
-            ${makeRow('X002', '235x85R16')}
-        </tbody></table>`;
-        const tires = parseRows(html);
-        expect(tires).toHaveLength(2);
-    });
-
-    test('skips rows with missing sku', () => {
-        const html = `<table><tbody>
-            <tr>
-              <td headers="view-views-conditional-field-table-column"></td>
-              <td headers="view-field-size-table-column">35x12.5R17</td>
-            </tr>
-        </tbody></table>`;
-        const tires = parseRows(html);
-        expect(tires).toHaveLength(0);
+        const html = wrap(makeRow('X001', '28x10R14') + makeRow('X002', '235x85R16'));
+        expect(_parseHtml(html)).toHaveLength(2);
     });
 });
