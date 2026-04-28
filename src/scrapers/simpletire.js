@@ -335,6 +335,7 @@ function parseSkuPage($, url) {
         size,
         is_blem: 0,
         quantity_raw: inStock ? 'in stock' : 'out of stock',
+        quantity_n: null,
         stock_state: stockState,
 
         price_cents: priceCents,

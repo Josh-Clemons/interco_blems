@@ -85,7 +85,7 @@ function getTiresBySource(source) {
  *   includeOutOfStock  - if true, include out_of_stock tires (default false)
  */
 function getActiveTires(filters = {}) {
-    const { source, brand, sizeMin, sizeMax, rim, priceMax, isBlem, category, stockState, includeOutOfStock = false } = filters;
+    const { source, brand, sizeMin, sizeMax, rim, priceMin, priceMax, isBlem, category, stockState, includeOutOfStock = false, minQty, maxQty, ply, loadRange, threePms } = filters;
 
     const clauses = ['is_active = 1'];
     const params = [];
@@ -96,7 +96,14 @@ function getActiveTires(filters = {}) {
     if (category) { clauses.push('category = ?'); params.push(category); }
     if (stockState) { clauses.push('stock_state = ?'); params.push(stockState); }
     if (!includeOutOfStock) { clauses.push("stock_state != 'out_of_stock'"); }
+    if (priceMin != null) { clauses.push('price_cents >= ?'); params.push(Math.round(priceMin * 100)); }
     if (priceMax != null) { clauses.push('price_cents <= ?'); params.push(Math.round(priceMax * 100)); }
+    if (minQty != null) { clauses.push('quantity_n >= ?'); params.push(minQty); }
+    if (maxQty != null) { clauses.push('quantity_n <= ?'); params.push(maxQty); }
+    if (ply != null) { clauses.push('ply = ?'); params.push(ply); }
+    if (loadRange) { clauses.push('load_range = ?'); params.push(loadRange.toUpperCase()); }
+    if (threePms === true) { clauses.push('three_pms = 1'); }
+    if (threePms === false) { clauses.push('three_pms = 0'); }
 
     let rows = getDb()
         .prepare(`SELECT * FROM tires WHERE ${clauses.join(' AND ')} ORDER BY source, sku`)
@@ -126,6 +133,50 @@ function getActiveTires(filters = {}) {
     }
 
     return rows;
+}
+
+/**
+ * Returns active tire counts per source, filtered by isBlem/source.
+ *   { source, count }
+ */
+function getActiveSources(filters = {}) {
+    const { isBlem, source } = filters;
+    const clauses = ["is_active = 1", "stock_state != 'out_of_stock'"];
+    const params = [];
+    if (isBlem === true)  { clauses.push('is_blem = 1'); }
+    if (isBlem === false) { clauses.push('is_blem = 0'); }
+    if (source) { clauses.push('source = ?'); params.push(source); }
+    return getDb()
+        .prepare(`SELECT source, COUNT(*) AS count FROM tires WHERE ${clauses.join(' AND ')} GROUP BY source ORDER BY source`)
+        .all(...params);
+}
+
+/** Returns distinct brand names for active, in-stock tires matching the given filters. */
+function getDistinctBrands(filters = {}) {
+    const { isBlem, source } = filters;
+    const clauses = ["is_active = 1", "stock_state != 'out_of_stock'", "brand IS NOT NULL", "brand != ''"];
+    const params = [];
+    if (isBlem === true)  { clauses.push('is_blem = 1'); }
+    if (isBlem === false) { clauses.push('is_blem = 0'); }
+    if (source) { clauses.push('source = ?'); params.push(source); }
+    return getDb()
+        .prepare(`SELECT DISTINCT brand FROM tires WHERE ${clauses.join(' AND ')} ORDER BY brand`)
+        .all(...params)
+        .map(r => r.brand);
+}
+
+/** Returns distinct category values for active, in-stock tires matching the given filters. */
+function getDistinctCategories(filters = {}) {
+    const { isBlem, source } = filters;
+    const clauses = ["is_active = 1", "stock_state != 'out_of_stock'", "category IS NOT NULL", "category != ''"];
+    const params = [];
+    if (isBlem === true)  { clauses.push('is_blem = 1'); }
+    if (isBlem === false) { clauses.push('is_blem = 0'); }
+    if (source) { clauses.push('source = ?'); params.push(source); }
+    return getDb()
+        .prepare(`SELECT DISTINCT category FROM tires WHERE ${clauses.join(' AND ')} ORDER BY category`)
+        .all(...params)
+        .map(r => r.category);
 }
 
 /**
@@ -443,6 +494,9 @@ function getBotStats() {
 module.exports = {
     getTiresBySource,
     getActiveTires,
+    getActiveSources,
+    getDistinctBrands,
+    getDistinctCategories,
     searchTires,
     getTireSources,
     upsertActiveTire,

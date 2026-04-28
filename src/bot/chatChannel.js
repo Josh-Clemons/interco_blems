@@ -11,7 +11,7 @@
 
 const log = require('../logger');
 const { parseQuery } = require('../llm/parseQuery');
-const { executeQuery, buildResultEmbeds } = require('./commands/ask');
+const { executeQuery, buildResultEmbeds, buildInfoContent } = require('./commands/ask');
 
 const CHAT_CHANNEL_ID = process.env.DISCORD_CHAT_CHANNEL_ID;
 
@@ -29,8 +29,9 @@ async function handleChatMessage(message) {
     try {
         await message.channel.sendTyping();
 
-        const { filters, fallback } = await parseQuery(queryText);
-        const isSearch = fallback || filters?.intent === 'search';
+        const parsed = await parseQuery(queryText);
+        const { filters, fallback } = parsed;
+        const intent = fallback ? 'search' : filters?.intent;
 
         // Determine reply target — open a thread if we're in the root channel
         let replyTarget = message.channel;
@@ -45,12 +46,14 @@ async function handleChatMessage(message) {
             }
         }
 
-        if (isSearch) {
-            const { results } = await executeQuery(queryText);
+        if (intent === 'info') {
+            await replyTarget.send(buildInfoContent(filters));
+        } else if (intent === 'search') {
+            const { results } = await executeQuery(queryText, parsed);
             const embeds = buildResultEmbeds(results, queryText, fallback);
             await replyTarget.send({ embeds });
         } else {
-            // Conversational reply from the LLM
+            // chat intent — conversational reply from the LLM
             await replyTarget.send(filters.reply || "I don't do small talk. What tires do you want?");
         }
     } catch (err) {

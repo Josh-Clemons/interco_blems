@@ -31,8 +31,9 @@ function startScheduler(job) {
     });
 }
 
-// Nightly full crawl — 2 AM Central, every day
-const DEFAULT_NIGHTLY = '0 0 2 * * *';
+// TODO Move schedule to .env with other schedule
+// Nightly full crawl — 12 AM Central, every day
+const DEFAULT_NIGHTLY = '0 0 0 * * *';
 
 function startNightly(job) {
     const schedule = process.env.NIGHTLY_SCHEDULE || DEFAULT_NIGHTLY;

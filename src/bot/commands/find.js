@@ -119,6 +119,6 @@ module.exports = {
         }
 
         // Discord allows max 10 embeds per message
-        await interaction.reply({ embeds: embeds.slice(0, 10) });
+        await interaction.reply({ embeds: embeds.slice(0, 10), flags: MessageFlags.Ephemeral });
     },
 };

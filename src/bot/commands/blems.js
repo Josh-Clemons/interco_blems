@@ -119,7 +119,7 @@ module.exports = {
 
         const filterKey = cacheFilters(filters);
         const payload = renderPage(filters, filterKey, 0);
-        await interaction.reply(payload);
+        await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
     },
 
     // Button handler — invoked by interactions.js when a button with
