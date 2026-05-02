@@ -8,6 +8,7 @@ const tire = (sku, size, over = {}) => ({
     quantity_n: 4,
     stock_state: 'in_stock',
     price: '$100',
+    is_blem: 1,
     ...over,
 });
 
@@ -58,6 +59,20 @@ describe('filterForPublicAlert()', () => {
         };
         const r = filterForPublicAlert(d);
         expect(r.added.map(t => t.sku)).toEqual(['B']);
+    });
+
+    test('suppresses non-blem tires (e.g. SimpleTire) from public alerts', () => {
+        const d = {
+            added: [
+                tire('A', '37x12.5R17', { is_blem: 0 }),
+                tire('B', '37x12.5R17', { is_blem: 1 }),
+            ],
+            reactivated: [tire('C', '40x13.5R17', { is_blem: 0 })],
+            changed: [], removed: [], unchanged: [],
+        };
+        const r = filterForPublicAlert(d);
+        expect(r.added.map(t => t.sku)).toEqual(['B']);
+        expect(r.reactivated).toHaveLength(0);
     });
 
     test('suppresses unavailable/out-of-stock tires from public alerts', () => {

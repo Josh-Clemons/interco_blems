@@ -16,14 +16,14 @@ const { parseDiameter } = require('./utils/tires');
 /**
  * Returns a new diff object with only tires that qualify for the public feed.
  * Public-feed criteria:
- *   1) minimum diameter (default 35")
+ *   1) tire must be a blem (is_blem=1) — non-blem sources (e.g. SimpleTire) never alert
  *   2) tire must be available (not out_of_stock / unavailable / qty 0)
- * Set PUBLIC_ALERT_MIN_DIAMETER=0 in .env to disable.
+ *   3) minimum diameter (default 35") — set PUBLIC_ALERT_MIN_DIAMETER=0 to disable
  */
 function filterForPublicAlert(diff) {
     // Read env on every call so tests can override at runtime.
     const min = parseFloat(process.env.PUBLIC_ALERT_MIN_DIAMETER ?? '35');
-    if (!min || Number.isNaN(min) || min <= 0) return diff; // no filtering
+    const checkDiameter = min && !Number.isNaN(min) && min > 0;
 
     const isUnavailable = (tire) => {
         const state = String(tire.stock_state || '').toLowerCase();
@@ -56,8 +56,11 @@ function filterForPublicAlert(diff) {
     };
 
     const passes = (tire) => {
+        if (!tire.is_blem) return false;
+        if (isUnavailable(tire)) return false;
+        if (!checkDiameter) return true;
         const d = tire.overall_diam || parseDiameter(tire.size);
-        return d != null && d >= min && !isUnavailable(tire);
+        return d != null && d >= min;
     };
 
     return {
