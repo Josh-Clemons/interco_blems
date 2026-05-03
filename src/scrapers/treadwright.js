@@ -1,7 +1,8 @@
 /**
  * TreadWright scraper — Shopify JSON API
  *
- * Fetches all tires from the /collections/filter endpoint.
+ * Fetches tires from three collections: filter (blems), mud-terrain, and all-terrain.
+ * Products are deduplicated by ID before parsing so overlap is handled cleanly.
  * Each variant (Standard Wear, Premier Wear, Winter Kedge) becomes its own row.
  * Blem detection via tags array containing "blemish".
  */
@@ -10,21 +11,25 @@ const { extractSizeToken } = require('../utils/tires');
 
 const NAME = 'treadwright';
 const URL = 'https://www.treadwright.com/collections/filter';
-const API_BASE = 'https://www.treadwright.com/collections/filter/products.json';
+const COLLECTIONS = [
+    'filter',
+    'mud-terrain-tires',
+    'all-terrain-tires',
+];
 
 // Title regex: [BLEMISH] [LT] | {AT/MT} {pattern} {size} {ply} PLY REMOLD USA
 // /i for case-insensitive "Remold"; prefix group handles BLEMISH|, LT|, or BLEMISH LT|
 const TITLE_RE = /^(?:(?:BLEMISH\s+)?(?:LT\s*)?\|\s*)?([AM]T)\s+(.+?)\s+([\d.]+[xX/][\d.]+[Rr][\d.]+)\s+(\d+)\s*PLY\s+REMOLD\s+USA/i;
 
 /**
- * Fetch all pages of products from Shopify JSON API.
+ * Fetch all pages of products from a single Shopify collection.
  */
-async function fetchAllProducts() {
+async function fetchCollection(slug) {
     const products = [];
     let page = 1;
 
     while (true) {
-        const url = `${API_BASE}?limit=250&page=${page}`;
+        const url = `https://www.treadwright.com/collections/${slug}/products.json?limit=250&page=${page}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
 
@@ -34,6 +39,26 @@ async function fetchAllProducts() {
         products.push(...data.products);
         if (data.products.length < 250) break;
         page++;
+    }
+
+    return products;
+}
+
+/**
+ * Fetch all products across all configured collections, deduplicating by product ID.
+ */
+async function fetchAllProducts() {
+    const seen = new Set();
+    const products = [];
+
+    for (const slug of COLLECTIONS) {
+        const batch = await fetchCollection(slug);
+        for (const p of batch) {
+            if (!seen.has(p.id)) {
+                seen.add(p.id);
+                products.push(p);
+            }
+        }
     }
 
     return products;

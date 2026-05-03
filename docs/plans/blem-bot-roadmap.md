@@ -933,42 +933,29 @@ sufficient coverage.
 
 ---
 
-## Phase 15 — Full Catalog Scraping for Interco and TreadWright
-*Expand interco and treadwright to capture their complete non-blem inventory, matching the coverage model simpletire already provides.*
+## Phase 15 — Full Catalog Scraping for TreadWright ✅
+*Expand treadwright to capture its complete non-blem inventory.*
 
 ### Why
-SimpleTire's value is its spec richness across the full off-road catalog — `/find` can surface any simpletire SKU whether or not it's a blem. Interco and TreadWright also sell their full tire lines direct (not just blems), but their scrapers today only hit the blem page/tag. Expanding them means `/find` becomes a genuinely cross-source product search, not just a blem list with simpletire appended.
+TreadWright's value for `/find` is their full remold catalog — blems are a subset. The previous scraper only hit `/collections/filter` (blems + a slice of regular inventory). Adding the canonical MT and AT collection URLs ensures we capture everything they sell.
 
-This also improves subscription utility: a user watching for a specific TreadWright model can subscribe by SKU or brand+size and get notified if that tire ever appears as a blem, even if it first enters the DB as regular inventory.
+**Interco** — confirmed no full catalog to scrape. They use distributors for standard tire lines; `/blem-list` is the only direct-to-consumer inventory page.
 
-### What each scraper needs to do
-
-**Interco** (`src/scrapers/interco.js`)
-- Currently hits only `/blem-list`. Interco also exposes a full product catalog.
-- Discover the catalog URL/structure — likely a category or product listing page.
-- Scrape catalog products with `is_blem=0`; the existing blem page scrape stays in place with `is_blem=1`.
-- Options: run blem-only on the regular schedule and full catalog as a separate nightly pass (same pattern as simpletire), or combine into one scrape if the catalog is small enough to run every 30 min.
+### What changed
 
 **TreadWright** (`src/scrapers/treadwright.js`)
-- Already hits the full Shopify catalog via `products.json` and sets `is_blem` based on the `blemish` tag — this is nearly done.
-- Current filter: `product.product_type !== 'Tire'` skips non-tire products, which is correct.
-- Gap: the scraper is already capturing non-blems with `is_blem=0`, but verify that all regular catalog variants are making it through and that the `/find` query surface is correct. May just need a smoke check rather than new scraper code.
+- Now fetches from three collections sequentially: `filter`, `mud-terrain-tires`, `all-terrain-tires`.
+- Products are deduplicated by Shopify product ID before parsing, so items appearing in multiple collections are not double-counted.
+- `is_blem` still derived from the `blemish` tag — unchanged.
+- No new fields, no schema changes.
 
-### Alert behavior (no change needed)
-The public feed filter (`alertFilter.js`) already suppresses `is_blem=0` tires — only blems trigger the public alert channel. Non-blem inventory expansion is purely additive to the DB and does not change alert behavior.
-
-Per-user subscriptions already support non-blem hits: `tireMatchesSubscription` does not filter on `is_blem`. A user watching a TreadWright model will get a DM whether it shows up as a blem or regular stock.
-
-### Deliverables
-- Updated `src/scrapers/interco.js` to fetch full catalog alongside blem list
-- Confirmed or updated `src/scrapers/treadwright.js` covering full catalog
-- Smoke-test results showing non-blem tires present per source in DB
-- If interco catalog is large: add a nightly schedule entry (same as simpletire) rather than running it every 30 min
+### Alert behavior (no change)
+`alertFilter.js` already suppresses `is_blem=0` tires from the public feed. Non-blem TreadWright inventory is only visible via `/find` and per-user subscriptions.
 
 ### Scope boundary
-- No schema changes — `is_blem` column already exists
+- No schema changes
 - No alert behavior changes
-- No new commands — `/find` and `/blems` already handle `is_blem` filtering correctly
+- No new commands
 
 ---
 
@@ -1202,11 +1189,11 @@ Phase 11  (Admin)                  ✅ Done — /admin scrape|sources|runs|error
 Phase 12  (NL search)              ✅ Done — /ask + chat channel listener + GitHub Models (gpt-4o-mini) + parseQuery golden-query tests
 Phase 13  (Plan polish)            ⏳ Ongoing catchall
 Phase 14  (Scraper health)         ✅ Done — fixture regression tests (tiremart, treadwright, simpletire) + smoke script
-Phase 15  (Full catalog scraping)  ⏳ Open — expand interco + treadwright to non-blem inventory
+Phase 15  (Full catalog scraping)  ✅ Done — treadwright now fetches filter + MT + AT collections; interco confirmed blem-only (no distributor catalog)
 Phase 16  (Feedback)               ⏳ Open — inline result ratings + /feedback command
 ```
 
-Immediate next step: Phase 15 (full catalog scraping) or Phase 16 (feedback).
+Immediate next step: Phase 16 (feedback).
 
 ---
 
